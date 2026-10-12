@@ -84,3 +84,36 @@ Two `Mandate` structs that differ only in recipient order are unequal under Rust
 Unresolved. To be settled in Milestone 4.
 
 EVM addresses are case-insensitive (EIP-55 checksums differ only in case), but `PrincipalId` currently compares exact strings and the ID encodes the exact string. So `0xAbC…` and `0xabc…` would count as different principals. Milestone 4 should normalize principals to lowercase when keys/addresses are derived, so the same address can never appear in two forms.
+
+---
+
+## 2026-10-12 — `can_delegate` checks the parent–child edge only
+
+**Decision**
+`can_delegate(parent, child)` enforces exactly the rules in the spec: the parent is delegable; the child points at the parent and is issued by the parent's subject; the action and resource are equal; the amount limit and recipient set only narrow; the expiry is not later. It does **not** check signatures, ID integrity, expiry against the current time, or revocation.
+
+**Reason**
+Those are properties of each mandate, not of the edge. The authorization engine (Milestones 4–6) checks them for every mandate in the chain. Keeping `can_delegate` pure makes the core rule easy to read and to test.
+
+**Consequences**
+- No caller may treat `can_delegate` returning `Ok` as "this child is valid". The chain verifier must also check `id == compute_mandate_id(unsigned)` and the signature for every link.
+- A parent with no limit of some kind (`None`) allows any child value for it. A parent with a limit (`Some`) requires the child to keep one that is equal or smaller. Dropping a restriction is an escalation.
+- `Some([])` (no recipients allowed) is a valid narrowing of any recipient set.
+- The child's `issued_at` is not compared with the parent's. Neither spec requires it, and backdating a child grants nothing because validity is bounded by `expires_at` and the parent's revocation. Revisit if issued-at / not-before semantics are added.
+- When several rules fail, the first failing check is reported, in this order: delegable, parent link, issuer, action, resource, amount, recipients, expiry.
+
+---
+
+## 2026-10-12 — One name per required test
+
+**Decision**
+The two spec files name some required tests differently. Each test is implemented once, under the `AGENTS.md` Milestone 3 name:
+
+| Implemented as | Also named in the specs |
+|---|---|
+| `child_can_reduce_recipients` | `child_can_remove_recipient` (BUILD_SPEC §34) |
+| `child_issuer_must_match_parent_subject` | `child_issuer_matches_parent_subject` (AGENTS test list) |
+| `non_delegable_parent_cannot_delegate` | `non_delegable_mandate_cannot_be_delegated` (BUILD_SPEC §34) |
+
+**Reason**
+Two identical tests under different names add maintenance cost and no coverage.

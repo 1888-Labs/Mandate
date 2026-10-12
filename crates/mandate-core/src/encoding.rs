@@ -120,7 +120,6 @@ fn put_str(out: &mut Vec<u8>, value: &str) {
 mod tests {
     use super::*;
     use crate::capability::Constraints;
-    use crate::mandate::Mandate;
     use crate::principal::PrincipalId;
 
     fn unsigned() -> UnsignedMandate {
@@ -138,24 +137,6 @@ mod tests {
             issued_at: 1_760_000_000,
             expires_at: 1_760_172_800,
             nonce: 1,
-        }
-    }
-
-    fn signed(signature: Vec<u8>) -> Mandate {
-        let u = unsigned();
-        Mandate {
-            id: compute_mandate_id(&u),
-            issuer: u.issuer,
-            subject: u.subject,
-            action: u.action,
-            resource: u.resource,
-            constraints: u.constraints,
-            parent: u.parent,
-            delegable: u.delegable,
-            issued_at: u.issued_at,
-            expires_at: u.expires_at,
-            nonce: u.nonce,
-            signature,
         }
     }
 
@@ -208,8 +189,8 @@ mod tests {
 
     #[test]
     fn signature_not_part_of_mandate_id() {
-        let a = signed(vec![0x01; 65]);
-        let b = signed(vec![0x02; 65]);
+        let a = unsigned().into_mandate(vec![0x01; 65]);
+        let b = unsigned().into_mandate(vec![0x02; 65]);
         assert_ne!(a.signature, b.signature);
         assert_eq!(
             compute_mandate_id(&a.unsigned()),

@@ -3,6 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{Constraints, ResourceId};
+use crate::encoding::compute_mandate_id;
 use crate::principal::PrincipalId;
 
 /// Deterministic identifier of a mandate (`0x`-prefixed keccak256 hex).
@@ -84,6 +85,28 @@ pub struct UnsignedMandate {
     pub expires_at: u64,
 
     pub nonce: u64,
+}
+
+impl UnsignedMandate {
+    /// Attach a signature, computing the mandate ID from this content.
+    ///
+    /// This does not check the signature. Use `mandate-crypto` for that.
+    pub fn into_mandate(self, signature: Vec<u8>) -> Mandate {
+        Mandate {
+            id: compute_mandate_id(&self),
+            issuer: self.issuer,
+            subject: self.subject,
+            action: self.action,
+            resource: self.resource,
+            constraints: self.constraints,
+            parent: self.parent,
+            delegable: self.delegable,
+            issued_at: self.issued_at,
+            expires_at: self.expires_at,
+            nonce: self.nonce,
+            signature,
+        }
+    }
 }
 
 #[cfg(test)]
