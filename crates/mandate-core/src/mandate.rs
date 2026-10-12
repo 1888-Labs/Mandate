@@ -45,6 +45,47 @@ pub struct Mandate {
     pub signature: Vec<u8>,
 }
 
+impl Mandate {
+    /// The authorization content of this mandate, without its ID or signature.
+    pub fn unsigned(&self) -> UnsignedMandate {
+        UnsignedMandate {
+            issuer: self.issuer.clone(),
+            subject: self.subject.clone(),
+            action: self.action.clone(),
+            resource: self.resource.clone(),
+            constraints: self.constraints.clone(),
+            parent: self.parent.clone(),
+            delegable: self.delegable,
+            issued_at: self.issued_at,
+            expires_at: self.expires_at,
+            nonce: self.nonce,
+        }
+    }
+}
+
+/// Every field of a mandate that carries authority.
+///
+/// This is what the mandate ID is computed from and what the issuer signs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsignedMandate {
+    pub issuer: PrincipalId,
+    pub subject: PrincipalId,
+
+    pub action: String,
+    pub resource: ResourceId,
+
+    pub constraints: Constraints,
+
+    pub parent: Option<MandateId>,
+    pub delegable: bool,
+
+    pub issued_at: u64,
+    pub expires_at: u64,
+
+    pub nonce: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

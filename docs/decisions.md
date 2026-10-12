@@ -46,3 +46,41 @@ One wire format for the API, the CLI and Arkiv payloads.
 
 **Consequences**
 This JSON is a convenience format only. Mandate IDs will be computed from a separate, explicit canonical encoding (Milestone 2), never from JSON.
+
+---
+
+## 2026-10-12 — Canonical mandate encoding
+
+**Decision**
+Mandate IDs are `keccak256` of a hand-written binary encoding of `UnsignedMandate` (`crates/mandate-core/src/encoding.rs`). Every string and list is prefixed with a u64 big-endian length, `Option` gets a `0x00`/`0x01` tag, and the bytes start with the domain separator `mandate/0.1`. IDs are written as `0x` + 64 lowercase hex characters.
+
+**Reason**
+The spec forbids relying on JSON field ordering. Length prefixes make the encoding unambiguous: shifting bytes across a field boundary cannot produce the same output. The domain separator stops a mandate hash from colliding with any other hash the system produces.
+
+**Alternatives considered**
+RLP / ABI encoding (adds a dependency, harder to read). Canonical JSON (RFC 8785) (needs a careful implementation in both Rust and TS).
+
+**Consequences**
+A unit test pins the exact bytes for a sample mandate. Any change to the format breaks that test on purpose, because it would invalidate every existing ID. If the format ever changes, bump the domain separator.
+
+---
+
+## 2026-10-12 — `allowed_recipients` is a set
+
+**Decision**
+The canonical encoding sorts and deduplicates `allowed_recipients`, so `[AWS, GitHub]`, `[GitHub, AWS]` and `[AWS, GitHub, AWS]` produce the same mandate ID.
+
+**Reason**
+Recipient checks (`child ⊆ parent`, `recipient ∈ allowed`) are set operations, and order carries no authority.
+
+**Consequences**
+Two `Mandate` structs that differ only in recipient order are unequal under Rust `==` but have the same ID. Authorization logic must compare recipients as sets, never as `Vec` equality. Recipient names are case-sensitive (`AWS` ≠ `aws`).
+
+---
+
+## 2026-10-12 — Open: principal address case
+
+**Status**
+Unresolved. To be settled in Milestone 4.
+
+EVM addresses are case-insensitive (EIP-55 checksums differ only in case), but `PrincipalId` currently compares exact strings and the ID encodes the exact string. So `0xAbC…` and `0xabc…` would count as different principals. Milestone 4 should normalize principals to lowercase when keys/addresses are derived, so the same address can never appear in two forms.
