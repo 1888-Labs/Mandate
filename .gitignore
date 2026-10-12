@@ -1,0 +1,10 @@
+/target
+node_modules/
+dist/
+
+# Secrets and local development keys. Never commit these.
+.env
+.env.*
+!.env.example
+*.key
+.mandate/

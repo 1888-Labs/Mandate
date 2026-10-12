@@ -1,0 +1,13 @@
+[package]
+name = "mandate-core"
+description = "Protocol types and authorization semantics for Mandate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hex = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
