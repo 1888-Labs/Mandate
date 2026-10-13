@@ -1,0 +1,345 @@
+# Mandate
+
+**Verifiable delegated authorization for autonomous AI agents.**
+
+Mandate lets a human give an AI agent narrowly scoped, cryptographically signed authority. That agent can hand a *smaller* piece of it to another agent, and anyone in the chain can revoke what they granted. Any action can be checked with an answer that explains itself: **ALLOW** or **DENY**, with the reason and the chain of authority behind it.
+
+Mandates and revocations are stored as public, queryable, time-scoped records on [Arkiv](https://arkiv.network). A Rust engine verifies every signature and every delegation step itself, so the storage layer can never invent authority.
+
+> **The prompt is not the security boundary. Mandate is.**
+
+> [!NOTE]
+> **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
+> The protocol core works and is tested: mandate types, deterministic IDs, delegation validation and Ethereum signatures.
+> The authorization engine, revocation, CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
+
+---
+
+## Contents
+
+- [The problem](#the-problem)
+- [How it works](#how-it-works)
+- [The core rule](#the-core-rule)
+- [Delegation](#delegation)
+- [Revocation](#revocation)
+- [Why Arkiv](#why-arkiv)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Protocol reference](#protocol-reference)
+- [Security model](#security-model)
+- [Threat model](#threat-model)
+- [Roadmap](#roadmap)
+- [Repository layout](#repository-layout)
+- [Development](#development)
+- [Hackathon disclosure](#hackathon-disclosure)
+- [License](#license)
+
+---
+
+## The problem
+
+AI agents now call MCP servers, APIs, wallets, cloud infrastructure, databases and payment systems, and they increasingly delegate work to *other agents*:
+
+```text
+Human ──delegates──▶ Agent A ──delegates part──▶ Agent B ──acts──▶ External system
+```
+
+Most authorization systems assume a human or app holding fairly static permissions. They can't answer the questions agent chains raise:
+
+> Was this agent actually authorized to do this? Who granted that authority, under what limits, and has it since been revoked?
+
+A system prompt that says "never spend more than $300" is not an answer. Prompt injection, bugs and confused agents can all talk past it. Mandate moves the limit out of the prompt and into signed, checkable authority.
+
+## How it works
+
+```text
+Alice
+  │  M1: transfer ≤ $1000 → AWS, may delegate, 48h
+  ▼
+FinanceAgent
+  │  M2: transfer ≤ $300 → AWS, 24h
+  ▼
+InvoiceAgent
+```
+
+| InvoiceAgent requests | Decision | Why |
+|---|---|---|
+| $200 → AWS | ✅ ALLOW | Within M2, and M2 is a valid narrowing of M1 |
+| $700 → AWS | ❌ DENY `AMOUNT_EXCEEDED` | Effective limit is $300 |
+| $100 → RandomVendor | ❌ DENY `RECIPIENT_NOT_ALLOWED` | Only AWS is allowed |
+| *Alice revokes M1*, then $100 → AWS | ❌ DENY `ANCESTOR_REVOKED` | M2's authority came from M1 |
+
+InvoiceAgent's mandate never had to be revoked on its own. Revoking an ancestor cuts off everything delegated beneath it.
+
+## The core rule
+
+> **A delegated mandate may only reduce authority. It may never expand it.**
+
+Everything else in Mandate exists to enforce and explain this rule. It's implemented in a single function, [`can_delegate(parent, child)`](crates/mandate-core/src/delegation.rs).
+
+## Delegation
+
+A child mandate is valid only if **all** of these hold:
+
+| Rule | Rejected with |
+|---|---|
+| Parent is `delegable` | `PARENT_NOT_DELEGABLE` |
+| Child's `parent` is the parent's ID | `INVALID_PARENT` |
+| Child's `issuer` is the parent's `subject` | `INVALID_ISSUER` |
+| Same `action` | `ACTION_ESCALATION` |
+| Same `resource` | `RESOURCE_ESCALATION` |
+| `max_amount` ≤ parent's, and kept if the parent had one | `AMOUNT_ESCALATION` |
+| `allowed_recipients` ⊆ parent's, and kept if the parent had one | `RECIPIENT_ESCALATION` |
+| `expires_at` ≤ parent's | `EXPIRATION_ESCALATION` |
+
+A child can lower a limit, drop recipients or expire sooner. It can **never remove a restriction** its parent had: a parent capped at $1000 can't produce an uncapped child.
+
+## Revocation
+
+*Designed. Not built yet (Milestone 6).*
+
+Revocation is a **separate signed document**, never an edit to the mandate. A mandate's issuer can revoke it. While checking a request, the engine walks the whole chain from the agent's mandate up to the root, and a revocation anywhere on that path denies the request with `REVOKED` or `ANCESTOR_REVOKED`.
+
+## Why Arkiv
+
+Mandate needs a **shared, queryable, time-scoped** record of who has been granted what, and of what has been revoked, that no single operator controls.
+
+| Alternative | Why not |
+|---|---|
+| Postgres | Every verifier must trust the operator, who could rewrite grants, hide revocations or show different consumers different answers. |
+| IPFS | Content-addressed, but not a live queryable dataset. You can't ask "active mandates for agent X on resource Y". |
+| Subgraph | Indexes data that lives somewhere else, so we'd first have to invent a contract and events to index. |
+
+On Arkiv, each mandate is an entity whose lifetime tracks the mandate's expiry, with queryable attributes (subject, action, resource, parent). Revocations are entities too. The Rust engine still checks every signature and every expiry itself: Arkiv provides **availability and discoverability**, never **authority**.
+
+**What never goes on Arkiv:** private keys, seed phrases, API secrets, prompts, model reasoning, private tool arguments or personal data. Only signed mandates, signed revocations and public authorization metadata.
+
+## Architecture
+
+```text
+                     AI agent
+                        │ "may I transfer $200 to AWS?"
+                        ▼
+               ┌──────────────────┐
+               │  Mandate server  │  Rust: all authorization semantics
+               └────────┬─────────┘
+       ┌────────────────┼────────────────┐
+       ▼                ▼                ▼
+   signature       delegation        constraint
+  verification    chain checks       evaluation
+       └────────────────┼────────────────┘
+                        ▼
+              ALLOW / DENY + explanation
+                        │ reads / writes
+                        ▼
+               ┌──────────────────┐
+               │  Arkiv adapter   │  TypeScript, only because the Arkiv SDK is TS
+               └────────┬─────────┘
+                        ▼
+              Arkiv (Tiramisu testnet)
+```
+
+Rust owns what authorization *means*. TypeScript only moves records to and from Arkiv.
+
+## Quick start
+
+Requirements: a recent stable Rust toolchain.
+
+```bash
+git clone <this repository>
+cd mandate
+cargo test
+```
+
+What you can do today is build, sign, verify and check mandates as a library. This example is compiled and run as a test ([`readme_flow.rs`](crates/mandate-crypto/tests/readme_flow.rs)):
+
+```rust
+use mandate_core::{can_delegate, Constraints, DelegationError, UnsignedMandate};
+use mandate_crypto::{address_of, generate_signing_key, sign_mandate, verify_mandate_signature};
+
+let now = 1_760_000_000;
+
+// Each principal is a secp256k1 key; its identity is the EVM address.
+let alice = generate_signing_key();
+let finance_agent = generate_signing_key();
+let invoice_agent = generate_signing_key();
+
+// M1 — Alice lets FinanceAgent transfer up to $1000 to AWS, and delegate.
+let m1 = sign_mandate(
+    &UnsignedMandate {
+        issuer: address_of(&alice),
+        subject: address_of(&finance_agent),
+        action: "transfer".into(),
+        resource: "wallet:treasury-demo".parse()?,
+        constraints: Constraints {
+            max_amount: Some(1000),
+            allowed_recipients: Some(vec!["AWS".into()]),
+        },
+        parent: None,
+        delegable: true,
+        issued_at: now,
+        expires_at: now + 48 * 3600,
+        nonce: 1,
+    },
+    &alice,
+)?;
+
+// M2 — FinanceAgent hands InvoiceAgent a narrower slice: $300, 24h.
+let m2 = sign_mandate(
+    &UnsignedMandate {
+        issuer: address_of(&finance_agent),
+        subject: address_of(&invoice_agent),
+        constraints: Constraints {
+            max_amount: Some(300),
+            ..m1.constraints.clone()
+        },
+        parent: Some(m1.id.clone()),
+        delegable: false,
+        expires_at: now + 24 * 3600,
+        nonce: 2,
+        ..m1.unsigned()
+    },
+    &finance_agent,
+)?;
+
+verify_mandate_signature(&m1)?;
+verify_mandate_signature(&m2)?;
+can_delegate(&m1, &m2)?; // Ok: M2 only narrows M1.
+
+// FinanceAgent tries to give InvoiceAgent more than it has.
+let escalated = sign_mandate(
+    &UnsignedMandate {
+        constraints: Constraints {
+            max_amount: Some(5000),
+            ..m2.constraints.clone()
+        },
+        ..m2.unsigned()
+    },
+    &finance_agent,
+)?;
+assert_eq!(
+    can_delegate(&m1, &escalated),
+    Err(DelegationError::AmountEscalation)
+);
+```
+
+The CLI (`mandate grant`, `mandate delegate`, `mandate check`, `mandate revoke`) and the HTTP API are [planned](#roadmap). This section will cover them once they exist.
+
+## Protocol reference
+
+### Mandate
+
+| Field | Meaning |
+|---|---|
+| `id` | Deterministic ID, see below |
+| `issuer` | Principal granting authority (lowercase EVM address) |
+| `subject` | Principal receiving authority |
+| `action` | Free-form verb: `transfer`, `read`, `merge_pr`, `send_email`, … |
+| `resource` | `kind:id`, e.g. `wallet:treasury-demo`, `mcp:github:create_issue` |
+| `constraints.max_amount` | Optional upper bound on amount |
+| `constraints.allowed_recipients` | Optional set of allowed recipients |
+| `parent` | ID of the mandate this was delegated from, or none for a root grant |
+| `delegable` | Whether the subject may delegate further |
+| `issued_at`, `expires_at` | Unix seconds |
+| `nonce` | Lets an issuer create otherwise-identical mandates |
+| `signature` | Issuer's 65-byte Ethereum signature |
+
+Mandate is not specific to wallets. `action` and `resource` are plain strings, so the same model covers payments, GitHub, databases or MCP tools.
+
+### Mandate IDs
+
+```text
+id = keccak256( canonical_encoding(mandate without id and signature) )
+```
+
+The canonical encoding is a hand-written, length-prefixed binary format with the domain separator `mandate/0.1` ([`encoding.rs`](crates/mandate-core/src/encoding.rs)). It never depends on JSON field order. Changing any field that carries authority changes the ID, and the signature is never part of it. The recipient list is treated as a set, so order doesn't matter.
+
+### Signatures
+
+The issuer signs the 32-byte mandate digest with **EIP-191 `personal_sign`** (secp256k1), so any Ethereum wallet or tool can sign a mandate. A test pins a signature produced by Foundry's `cast` to make sure we interoperate.
+
+Verification recomputes the digest from the mandate's content and never trusts the stored ID. It recovers the signer and requires it to equal `issuer`. Verification rejects:
+
+- non-canonical addresses
+- an ID that doesn't match the content
+- malformed signatures
+- malleable high-`s` signatures
+
+## Security model
+
+Mandate v0.1 is designed to reject each of the following. ✅ means it's implemented and covered by tests today.
+
+| Attack | Defence | Status |
+|---|---|---|
+| Forged mandate | Issuer signature must recover to `issuer` | ✅ |
+| Storage tampers with a mandate | ID and signature are recomputed from content | ✅ |
+| Privilege escalation through delegation | `can_delegate` attenuation rules | ✅ |
+| Wrong resource or action | Exact match required along the chain | ✅ (delegation) |
+| Expired authority | Signed `expires_at` checked by the engine, not storage | Planned (M5) |
+| Amount above the delegated limit | Effective constraints of the chain | Planned (M5) |
+| Recipient not allowed | Effective constraints of the chain | Planned (M5) |
+| Revoked authority | Signed revocation documents | Planned (M6) |
+| Ancestor revoked | Full-chain check on every request | Planned (M6) |
+
+## Threat model
+
+Mandate enforces authorization **when the protected tool honours Mandate's decision**. It does **not** protect against:
+
+- a compromised root private key
+- a service or application that ignores Mandate and calls the tool directly
+- confidentiality of anything deliberately published to Arkiv (all records are public)
+- a malicious operating system or host
+- bugs inside the protected external tool
+- an LLM being wrong, or every possible prompt-injection attack
+- **quantum adversaries:** mandates use secp256k1 ECDSA, like Ethereum itself. A large enough quantum computer could forge these signatures. Post-quantum signatures are out of scope for v0.1.
+
+## Roadmap
+
+- [x] **M1** Core protocol types
+- [x] **M2** Canonical encoding and deterministic mandate IDs
+- [x] **M3** Delegation validation (`can_delegate`)
+- [x] **M4** Ethereum-compatible signatures
+- [ ] **M5** Authorization engine: requests, decisions, evidence, chain traversal, expiry
+- [ ] **M6** Revocation and ancestor revocation
+- [ ] **M7** In-memory store and the full demo flow without Arkiv
+- [ ] **M8** CLI
+- [ ] **M9** Arkiv adapter (TypeScript, Tiramisu testnet)
+- [ ] **M10** Rust HTTP server
+- [ ] **M11** Demo agent: a prompt-injected agent blocked by Mandate
+- [ ] **M12** Web UI
+- [ ] Public deployment, `arkiv/schema.md`, `arkiv/friction.md`, demo video
+
+Out of scope for v0.1: tokens, NFTs, DAOs, a custom policy language, DIDs, custom chains, ZK proofs, multisig, production money movement.
+
+## Repository layout
+
+```text
+mandate/
+├── crates/
+│   ├── mandate-core/     protocol types, encoding, IDs, delegation rules (no crypto, no I/O)
+│   └── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification
+├── docs/
+│   └── decisions.md      every design decision and deviation from the spec
+├── AGENTS.md             rules for coding agents working on this repo
+└── BUILD_SPEC.md         full v0.1 specification
+```
+
+Planned: `crates/mandate-server`, `crates/mandate-cli`, `apps/arkiv-adapter`, `apps/web`, `examples/finance-agent`, `arkiv/`.
+
+## Development
+
+```bash
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+All three must pass before any change to authorization logic is merged. Every protocol rule has a test, and tests are never deleted to make CI pass. Design decisions are recorded in [`docs/decisions.md`](docs/decisions.md).
+
+## Hackathon disclosure
+
+Mandate is being built for the **Arkiv: Global Tour Stop** hackathon (Security track, with Open Source as secondary), starting 12 October 2026. All code in this repository was written during the hackathon. Development is AI-assisted (Claude Code) and directed by the author against the specification in [`BUILD_SPEC.md`](BUILD_SPEC.md).
+
+## License
+
+[MIT](LICENSE)
