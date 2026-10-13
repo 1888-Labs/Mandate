@@ -142,3 +142,50 @@ EIP-712 typed data. Wallets would show it more readably, but it would mean keepi
 **Consequences**
 A wallet prompt shows only an opaque 32-byte hex value, not the mandate's fields. Low-`s` enforcement means each signer has exactly one valid signature per mandate. The signature is outside the ID either way.
 
+
+---
+
+## 2026-10-13 — Trust anchors: who may issue a root mandate (security fix)
+
+**Decision**
+`authorize` takes a `TrustAnchors` map of resource → principals allowed to issue *root* mandates for that resource. A chain whose root issuer is not trusted for its resource is denied with the new reason `UNTRUSTED_ROOT`.
+
+**Reason**
+Neither spec says who may start a chain. Without this, any agent could sign a root mandate to itself ("InvoiceAgent → InvoiceAgent: transfer anything to anyone"). The engine would find a validly signed mandate and return ALLOW, making every limit in the demo bypassable. A signature only proves *who* granted authority, not that they *had* it to grant.
+
+**Alternatives considered**
+- Pass the expected root principal in each `AuthorizationRequest`. Rejected: it puts the caller in charge of a security decision on every call.
+- Store resource ownership on Arkiv. Possible later, but it needs its own ownership-proof design and is out of scope for v0.1.
+
+**Consequences**
+The CLI and server must be configured with resource owners (for the demo: Alice owns `wallet:treasury-demo`). `DenyReason` has one variant beyond the spec's list. The README security table lists this protection.
+
+---
+
+## 2026-10-13 — Denials carry structured detail
+
+**Decision**
+`AuthorizationDecision::Deny` holds a `Denial { reason, mandate_id, delegation_path }` rather than a bare `DenyReason`. `DenyReason` variants carry their evidence, for example `AmountExceeded { requested, maximum }`, `Expired { mandate_id, expires_at }`, `InvalidDelegation { mandate_id, fault }`. `code()` gives the stable string (`AMOUNT_EXCEEDED`, …).
+
+**Reason**
+The spec requires every failure to be explainable, and its sample outputs show requested vs maximum, the delegation path and the revoked ancestor. A bare enum can't carry that.
+
+**Consequences**
+The API maps `Denial` to the spec's JSON shape (`reason`, `requestedAmount`, `maximumAmount`, …) in Milestone 10.
+
+---
+
+## 2026-10-13 — Authorization engine semantics
+
+**Decision**
+- **Boundary:** the engine depends on two traits defined in `mandate-core`: `MandateStore` (read state) and `SignatureVerifier` (ID integrity plus signature). `mandate-crypto::EthereumVerifier` implements the verifier, which keeps core free of cryptography. `MandateStore` gains `find_revocation` in Milestone 6, and Milestone 7 adds `MemoryMandateStore`.
+- **Order of checks per candidate:** action/resource match → resolve and verify every mandate leaf→root → every edge passes `can_delegate` → root trusted → no mandate expired → effective constraints. Revocation goes between expiry and constraints in Milestone 6.
+- **Expiry:** a mandate is valid while `timestamp < expires_at`. At `timestamp == expires_at` it is expired. `issued_at` is not checked (no not-before semantics in v0.1). The engine reports the highest expired mandate in the chain.
+- **Effective constraints:** the minimum amount and the intersection of recipient sets over the whole chain. For a valid chain this equals the leaf's, but computing it from every link keeps it correct regardless.
+- **Fail closed on missing request fields:** if a limit applies and the request has no `amount`, the result is `AMOUNT_EXCEEDED` (`requested: null`). If recipients are restricted and there is no `recipient`, the result is `RECIPIENT_NOT_ALLOWED`.
+- **Several candidates:** candidates are evaluated in mandate-ID order, and any one that fully authorizes gives ALLOW. If all are denied, the denial from the candidate that got furthest is reported (constraints > revocation > expiry > untrusted root > invalid delegation > bad signature > action/resource). A planted forgery or self-issued mandate therefore can't hide the real reason (`AMOUNT_EXCEEDED`).
+- **Depth limit:** at most `MAX_CHAIN_DEPTH = 16` delegation hops. A deeper chain is `INVALID_DELEGATION` / `TooDeep`.
+- **Untrusted storage:** mandates for a different subject are ignored even if the store returns them. A missing parent is `INVALID_DELEGATION` / `MissingParent`.
+
+**Consequences**
+Tests cover each rule. A mutation check confirmed the suite fails if signature checking, `can_delegate`, the trust-anchor check or the expiry boundary is removed or weakened. `amount_above_effective_limit_is_denied` (BUILD_SPEC §34) is implemented as `amount_above_limit_is_denied`.

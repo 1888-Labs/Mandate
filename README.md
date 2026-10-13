@@ -10,8 +10,8 @@ Mandates and revocations are stored as public, queryable, time-scoped records on
 
 > [!NOTE]
 > **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
-> The protocol core works and is tested: mandate types, deterministic IDs, delegation validation and Ethereum signatures.
-> The authorization engine, revocation, CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
+> Working and tested: mandate types, deterministic IDs, delegation validation, Ethereum signatures and the authorization engine (ALLOW/DENY with explanations).
+> Revocation, CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
 
 ---
 
@@ -93,6 +93,8 @@ A child mandate is valid only if **all** of these hold:
 | `expires_at` ≤ parent's | `EXPIRATION_ESCALATION` |
 
 A child can lower a limit, drop recipients or expire sooner. It can **never remove a restriction** its parent had: a parent capped at $1000 can't produce an uncapped child.
+
+**Where authority starts.** A signature proves *who* granted authority, not that they *had* it to grant. So every chain must end at a root mandate issued by a **trust anchor**, a principal configured as an owner of that resource (in the demo, Alice owns `wallet:treasury-demo`). An agent that signs itself a root mandate gets `UNTRUSTED_ROOT`.
 
 ## Revocation
 
@@ -274,10 +276,12 @@ Mandate v0.1 is designed to reject each of the following. ✅ means it's impleme
 | Forged mandate | Issuer signature must recover to `issuer` | ✅ |
 | Storage tampers with a mandate | ID and signature are recomputed from content | ✅ |
 | Privilege escalation through delegation | `can_delegate` attenuation rules | ✅ |
-| Wrong resource or action | Exact match required along the chain | ✅ (delegation) |
-| Expired authority | Signed `expires_at` checked by the engine, not storage | Planned (M5) |
-| Amount above the delegated limit | Effective constraints of the chain | Planned (M5) |
-| Recipient not allowed | Effective constraints of the chain | Planned (M5) |
+| Self-issued authority (agent grants itself a root mandate) | Root issuer must be a trusted owner of the resource | ✅ |
+| Wrong resource or action | Exact match required along the chain | ✅ |
+| Expired authority | Signed `expires_at` of every link checked by the engine, not storage | ✅ |
+| Amount above the delegated limit | Effective constraints of the chain | ✅ |
+| Recipient not allowed | Effective constraints of the chain | ✅ |
+| Forged record planted next to a real one | Every candidate verified; closest real reason reported | ✅ |
 | Revoked authority | Signed revocation documents | Planned (M6) |
 | Ancestor revoked | Full-chain check on every request | Planned (M6) |
 
@@ -299,7 +303,7 @@ Mandate enforces authorization **when the protected tool honours Mandate's decis
 - [x] **M2** Canonical encoding and deterministic mandate IDs
 - [x] **M3** Delegation validation (`can_delegate`)
 - [x] **M4** Ethereum-compatible signatures
-- [ ] **M5** Authorization engine: requests, decisions, evidence, chain traversal, expiry
+- [x] **M5** Authorization engine: requests, decisions, evidence, chain traversal, expiry, trust anchors
 - [ ] **M6** Revocation and ancestor revocation
 - [ ] **M7** In-memory store and the full demo flow without Arkiv
 - [ ] **M8** CLI
@@ -316,7 +320,7 @@ Out of scope for v0.1: tokens, NFTs, DAOs, a custom policy language, DIDs, custo
 ```text
 mandate/
 ├── crates/
-│   ├── mandate-core/     protocol types, encoding, IDs, delegation rules (no crypto, no I/O)
+│   ├── mandate-core/     protocol types, IDs, delegation rules, authorization engine (no crypto, no I/O)
 │   └── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification
 ├── docs/
 │   └── decisions.md      every design decision and deviation from the spec

@@ -1,11 +1,22 @@
 //! Checking issuer signatures.
 
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use mandate_core::{compute_mandate_id, mandate_digest, Mandate, PrincipalId};
+use mandate_core::{compute_mandate_id, mandate_digest, Mandate, PrincipalId, SignatureVerifier};
 
 use crate::error::SignatureError;
 use crate::keys::{address_of_verifying_key, is_canonical_address};
 use crate::signing::{eip191_hash, SIGNATURE_LEN};
+
+/// `SignatureVerifier` for the authorization engine, backed by
+/// `verify_mandate_signature`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EthereumVerifier;
+
+impl SignatureVerifier for EthereumVerifier {
+    fn verify_mandate(&self, mandate: &Mandate) -> bool {
+        verify_mandate_signature(mandate).is_ok()
+    }
+}
 
 /// Verify that `mandate` was signed by its issuer and its ID is honest.
 ///
