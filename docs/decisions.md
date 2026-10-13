@@ -228,3 +228,30 @@ The specs use several names for the same revocation tests. Each is implemented o
 | `directly_revoked_mandate_is_denied` | `direct_revocation_is_respected` (AGENTS test list), `directly_revoked_mandate_is_rejected` (BUILD_SPEC §34) |
 | `revoked_parent_invalidates_child` | `parent_revocation_invalidates_child` (AGENTS test list) |
 | `revoked_grandparent_invalidates_descendant` | `grandparent_revocation_invalidates_descendant` (AGENTS test list) |
+
+---
+
+## 2026-10-13 — `MandateStore::get_mandates` returns every copy of an ID (security)
+
+**Decision**
+The spec's trait has `get_mandate(&MandateId) -> Option<Mandate>`. Mandate uses `get_mandates(&MandateId) -> Vec<Mandate>`. When resolving a parent, the engine ignores copies whose ID doesn't match, prefers a copy whose signature verifies, and reports `INVALID_SIGNATURE` only if no copy verifies.
+
+**Reason**
+A mandate ID covers the content but not the signature, so anyone can publish a copy of a real mandate with the same ID and a garbage signature. With a single `Option`, a store that returned that copy would break every chain running through the real mandate: a denial-of-service anyone could trigger. This is the same reasoning as for `find_revocations`.
+
+**Consequences**
+- The Arkiv adapter must return every entity with a matching `mandate_id`.
+- A test makes the forged copy sort *before* the real one, so the engine has to actively prefer the copy that verifies. An earlier version of the test passed by ordering luck, and a mutation check caught it.
+
+---
+
+## 2026-10-13 — `MemoryMandateStore`
+
+**Decision**
+`mandate-core` provides `MemoryMandateStore`: an append-only `MandateStore` that, like Arkiv, accepts any record and verifies nothing. It ignores exact duplicates (same ID and signature) and keeps every other record, including different copies under one ID. It also offers `find_children(parent)` for chain display.
+
+**Reason**
+The engine must be proven against a store that behaves like the real untrusted one, before Arkiv is integrated (AGENTS.md Milestone 7).
+
+**Consequences**
+Lookups are linear scans, which is fine at demo scale. The Milestone 7 acceptance test (`crates/mandate-crypto/tests/authorization_flow.rs`) runs all seven demo steps against it with real signatures and planted forgeries.

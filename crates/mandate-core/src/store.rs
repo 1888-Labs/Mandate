@@ -11,7 +11,12 @@ use crate::revocation::Revocation;
 
 /// Read access to shared authorization state.
 pub trait MandateStore {
-    fn get_mandate(&self, id: &MandateId) -> Option<Mandate>;
+    /// Every stored record that claims to be mandate `id`.
+    ///
+    /// Returns all of them, not just one: a mandate's ID does not cover its
+    /// signature, so anyone can publish a copy with the same ID and a bad
+    /// signature. The engine picks the copy that verifies.
+    fn get_mandates(&self, id: &MandateId) -> Vec<Mandate>;
 
     fn find_mandates(
         &self,

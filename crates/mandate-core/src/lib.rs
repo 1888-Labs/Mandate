@@ -9,6 +9,7 @@ pub mod delegation;
 pub mod encoding;
 pub mod error;
 pub mod mandate;
+pub mod memory;
 pub mod principal;
 pub mod revocation;
 pub mod store;
@@ -27,6 +28,7 @@ pub use encoding::{
 };
 pub use error::DelegationError;
 pub use mandate::{Mandate, MandateId, UnsignedMandate};
+pub use memory::MemoryMandateStore;
 pub use principal::PrincipalId;
 pub use revocation::{Revocation, RevocationId, UnsignedRevocation};
 pub use store::{MandateStore, SignatureVerifier};

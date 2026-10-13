@@ -10,7 +10,7 @@ Mandates and revocations are stored as public, queryable, time-scoped records on
 
 > [!NOTE]
 > **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
-> Working and tested: mandate types, deterministic IDs, delegation validation, Ethereum signatures, the authorization engine (ALLOW/DENY with explanations) and revocation. The full demo flow runs in memory with real signatures.
+> Working and tested: mandate types, deterministic IDs, delegation validation, Ethereum signatures, the authorization engine (ALLOW/DENY with explanations), revocation and an in-memory store. The full demo flow runs in memory with real signatures.
 > The CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
 
 ---
@@ -293,6 +293,7 @@ Mandate v0.1 is designed to reject each of the following. ✅ means it's impleme
 | Revoked authority | Signed revocation documents | ✅ |
 | Ancestor revoked | Full-chain check on every request | ✅ |
 | Forged or replayed revocation | Must target the exact mandate, be signed by its issuer, and use the revocation domain separator | ✅ |
+| Forged copy of a real mandate published to break a chain | Store returns every copy; the engine uses the one that verifies | ✅ |
 
 ## Threat model
 
@@ -351,7 +352,7 @@ Mandate v0.1 does not implement the paper's group grammars or negative clauses. 
 - [x] **M4** Ethereum-compatible signatures
 - [x] **M5** Authorization engine: requests, decisions, evidence, chain traversal, expiry, trust anchors
 - [x] **M6** Revocation and ancestor revocation
-- [ ] **M7** In-memory store and the full demo flow without Arkiv
+- [x] **M7** In-memory store and the full demo flow without Arkiv
 - [ ] **M8** CLI
 - [ ] **M9** Arkiv adapter (TypeScript, Tiramisu testnet)
 - [ ] **M10** Rust HTTP server

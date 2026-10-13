@@ -1,38 +1,13 @@
-//! The full demo flow (BUILD_SPEC.md §29, steps 1–7) with real secp256k1
-//! signatures, in memory.
+//! Milestone 7 acceptance: the full demo flow (BUILD_SPEC.md §29, steps
+//! 1–7) with real secp256k1 signatures and `MemoryMandateStore`, no Arkiv.
 
 use mandate_core::{
-    authorize, AuthorizationDecision, AuthorizationRequest, Constraints, Mandate, MandateId,
-    MandateStore, PrincipalId, ResourceId, Revocation, TrustAnchors, UnsignedMandate,
-    UnsignedRevocation,
+    authorize, AuthorizationDecision, AuthorizationRequest, Constraints, MemoryMandateStore,
+    ResourceId, TrustAnchors, UnsignedMandate, UnsignedRevocation,
 };
 use mandate_crypto::{
     address_of, generate_signing_key, sign_mandate, sign_revocation, EthereumVerifier,
 };
-
-struct VecStore(Vec<Mandate>, Vec<Revocation>);
-
-impl MandateStore for VecStore {
-    fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
-        self.0.iter().find(|m| &m.id == id).cloned()
-    }
-
-    fn find_mandates(&self, s: &PrincipalId, a: &str, r: &ResourceId) -> Vec<Mandate> {
-        self.0
-            .iter()
-            .filter(|m| &m.subject == s && m.action == a && &m.resource == r)
-            .cloned()
-            .collect()
-    }
-
-    fn find_revocations(&self, id: &MandateId) -> Vec<Revocation> {
-        self.1
-            .iter()
-            .filter(|r| &r.mandate_id == id)
-            .cloned()
-            .collect()
-    }
-}
 
 #[test]
 fn demo_flow_with_real_signatures() {
@@ -100,9 +75,17 @@ fn demo_flow_with_real_signatures() {
     .signature;
     let forged = forged.into_mandate(forged_sig);
 
-    let mut store = VecStore(vec![m1.clone(), m2.clone(), forged], vec![]);
+    // Mallory also republishes M1 under its real ID with a bad signature.
+    let mut broken_copy = m1.clone();
+    broken_copy.signature = vec![0x00; 65];
+
+    let mut store = MemoryMandateStore::new();
+    store.insert_mandate(broken_copy);
+    store.insert_mandate(m1.clone());
+    store.insert_mandate(m2.clone());
+    store.insert_mandate(forged);
     let anchors = TrustAnchors::new().trust(treasury.clone(), address_of(&alice));
-    let ask = |store: &VecStore, amount: u64, recipient: &str| {
+    let ask = |store: &MemoryMandateStore, amount: u64, recipient: &str| {
         authorize(
             &AuthorizationRequest {
                 subject: address_of(&invoice),
@@ -160,7 +143,7 @@ fn demo_flow_with_real_signatures() {
         &mallory,
     )
     .unwrap();
-    store.1.push(fake_revocation);
+    store.insert_revocation(fake_revocation);
     assert!(ask(&store, 100, "AWS").is_allowed());
 
     // 6. Alice revokes M1.
@@ -174,7 +157,7 @@ fn demo_flow_with_real_signatures() {
         &alice,
     )
     .unwrap();
-    store.1.push(revocation.clone());
+    store.insert_revocation(revocation.clone());
 
     // 7. $100 → AWS: DENY ANCESTOR_REVOKED, naming M1 and the full path.
     match ask(&store, 100, "AWS") {

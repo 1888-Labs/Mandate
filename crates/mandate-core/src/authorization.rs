@@ -286,7 +286,7 @@ where
             if chain.len() > MAX_CHAIN_DEPTH {
                 Some(ChainFault::TooDeep)
             } else {
-                match store.get_mandate(&parent_id) {
+                match pick_mandate(store.get_mandates(&parent_id), &parent_id, verifier) {
                     Some(parent) => {
                         current = parent;
                         continue;
@@ -397,6 +397,24 @@ where
     })
 }
 
+/// Choose which stored copy of mandate `id` to use.
+///
+/// Prefers a copy that verifies. If none does, returns one anyway so the
+/// caller reports the bad signature rather than a missing parent. Copies
+/// whose ID is not `id` are ignored.
+fn pick_mandate<V: SignatureVerifier>(
+    mut copies: Vec<Mandate>,
+    id: &MandateId,
+    verifier: &V,
+) -> Option<Mandate> {
+    copies.retain(|m| &m.id == id);
+    copies.sort_by(|a, b| a.signature.cmp(&b.signature));
+    match copies.iter().position(|m| verifier.verify_mandate(m)) {
+        Some(i) => Some(copies.swap_remove(i)),
+        None => copies.into_iter().next(),
+    }
+}
+
 /// The first revocation of `mandate` that actually counts: it targets this
 /// mandate, comes from the mandate's own issuer, and is validly signed.
 /// Anything else the store returns is ignored.
@@ -478,8 +496,8 @@ mod tests {
     struct VecStore(Vec<Mandate>, Vec<Revocation>);
 
     impl MandateStore for VecStore {
-        fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
-            self.0.iter().find(|m| &m.id == id).cloned()
+        fn get_mandates(&self, id: &MandateId) -> Vec<Mandate> {
+            self.0.iter().filter(|m| &m.id == id).cloned().collect()
         }
 
         fn find_mandates(&self, s: &PrincipalId, a: &str, r: &ResourceId) -> Vec<Mandate> {
@@ -983,8 +1001,8 @@ mod tests {
         /// A store that ignores the subject filter.
         struct SloppyStore(VecStore);
         impl MandateStore for SloppyStore {
-            fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
-                self.0.get_mandate(id)
+            fn get_mandates(&self, id: &MandateId) -> Vec<Mandate> {
+                self.0.get_mandates(id)
             }
             fn find_mandates(&self, _: &PrincipalId, _: &str, _: &ResourceId) -> Vec<Mandate> {
                 self.0 .0.clone()
@@ -1231,8 +1249,8 @@ mod tests {
         /// A store that returns every revocation for every query.
         struct LeakyStore(VecStore);
         impl MandateStore for LeakyStore {
-            fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
-                self.0.get_mandate(id)
+            fn get_mandates(&self, id: &MandateId) -> Vec<Mandate> {
+                self.0.get_mandates(id)
             }
             fn find_mandates(&self, s: &PrincipalId, a: &str, r: &ResourceId) -> Vec<Mandate> {
                 self.0.find_mandates(s, a, r)
@@ -1305,5 +1323,91 @@ mod tests {
             panic!("expected ALLOW via the sibling mandate");
         };
         assert_eq!(e.mandate_id, sibling.id);
+    }
+    // --- Duplicate records (Milestone 7) ---
+
+    #[test]
+    fn forged_copy_of_parent_does_not_break_chain() {
+        // Mallory republishes M1 with the same ID and a bad signature,
+        // hoping the store returns her copy and breaks InvoiceAgent's chain.
+        let (mut store, m1, _) = demo();
+        let mut copy = m1.clone();
+        // Sorts before the real signature, so the engine can't win by luck
+        // of ordering: it must actively prefer the copy that verifies.
+        copy.signature = vec![0x00];
+        assert!(copy.signature < m1.signature);
+        assert_eq!(copy.id, m1.id);
+
+        store.0.insert(0, copy.clone());
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+        store.0.reverse();
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+
+        // With only the forged copy left, the bad signature is reported.
+        store
+            .0
+            .retain(|m| m.id != m1.id || m.signature == copy.signature);
+        assert_eq!(
+            denial(check(&store, &request(200, "AWS"))).reason,
+            DenyReason::InvalidSignature {
+                mandate_id: m1.id.clone()
+            }
+        );
+    }
+
+    #[test]
+    fn parent_records_with_other_ids_are_ignored() {
+        /// A store that returns every mandate for every ID lookup.
+        struct NoisyStore(VecStore);
+        impl MandateStore for NoisyStore {
+            fn get_mandates(&self, _: &MandateId) -> Vec<Mandate> {
+                self.0 .0.clone()
+            }
+            fn find_mandates(&self, s: &PrincipalId, a: &str, r: &ResourceId) -> Vec<Mandate> {
+                self.0.find_mandates(s, a, r)
+            }
+            fn find_revocations(&self, id: &MandateId) -> Vec<Revocation> {
+                self.0.find_revocations(id)
+            }
+        }
+        let (store, m1, m2) = demo();
+        let full = NoisyStore(store);
+        assert!(authorize(&request(200, "AWS"), &full, &FakeVerifier, &anchors()).is_allowed());
+
+        // Without M1, a random other mandate must not stand in as the parent.
+        let unrelated = sign(UnsignedMandate {
+            nonce: 9,
+            ..m1_unsigned()
+        });
+        let partial = NoisyStore(VecStore(vec![m2.clone(), unrelated], vec![]));
+        let d = denial(authorize(
+            &request(200, "AWS"),
+            &partial,
+            &FakeVerifier,
+            &anchors(),
+        ));
+        assert_eq!(
+            d.reason,
+            DenyReason::InvalidDelegation {
+                mandate_id: m2.id,
+                fault: ChainFault::MissingParent(m1.id)
+            }
+        );
+    }
+
+    #[test]
+    fn works_with_memory_store() {
+        let (vec_store, m1, m2) = demo();
+        let mut store = crate::memory::MemoryMandateStore::new();
+        for m in vec_store.0 {
+            store.insert_mandate(m);
+        }
+        let req = request(200, "AWS");
+        assert!(authorize(&req, &store, &FakeVerifier, &anchors()).is_allowed());
+
+        store.insert_revocation(revoke(&m1, alice()));
+        let d = denial(authorize(&req, &store, &FakeVerifier, &anchors()));
+        assert_eq!(d.reason.code(), "ANCESTOR_REVOKED");
+        assert_eq!(d.mandate_id, Some(m2.id));
     }
 }
