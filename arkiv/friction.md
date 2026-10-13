@@ -114,6 +114,8 @@ The server's message is excellent. But through the SDK we never saw it: viem's `
 - `ARKIV_API_KEY` support (sent as `X-API-KEY`, so the key never appears in URLs or logs).
 - Spend less: one OR query per chain level for ancestors, one OR query for all revocations, and attributes fetched only when needed.
 
+With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9998`), and the full demo passes.
+
 **Suggested improvement:**
 - Mention access keys and the anonymous budget in the SDK README next to `createPublicClient`, with an `apiKey` option.
 - Have the SDK surface `ANON_COST_LIMITED` / `ratelimit` as a typed error rather than leaving viem to sleep on `Retry-After`.

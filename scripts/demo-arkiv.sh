@@ -27,6 +27,12 @@ trap cleanup EXIT
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 cd "$ROOT"
+for port in "$ADAPTER_PORT" "$SERVER_PORT"; do
+  if curl -s -m 2 -o /dev/null "http://127.0.0.1:$port/health"; then
+    echo "port $port is already in use (a previous adapter/server?). Stop it first." >&2
+    exit 1
+  fi
+done
 cargo build -q -p mandate-cli -p mandate-server
 M="$ROOT/target/debug/mandate"
 
@@ -61,16 +67,35 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-if ! curl -sf -m 20 "http://127.0.0.1:$ADAPTER_PORT/health" >/dev/null; then
-  echo "adapter did not start:"; cat "$WORK/adapter.log"; exit 1
-fi
+for pid in "${PIDS[@]}"; do
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "a service failed to start:" >&2
+    cat "$WORK/adapter.log" "$WORK/server.log" >&2
+    exit 1
+  fi
+done
 
-post() { curl -s -m 120 -X POST -H 'content-type: application/json' "$API$1" --data-binary "@$2"; echo; }
+FAILED=0
+fail() { printf '\033[31m✗ %s\033[0m\n' "$*"; FAILED=1; }
+
+# post PATH FILE: publish a signed document; it must be accepted.
+post() {
+  local body
+  body="$(curl -s -m 120 -X POST -H 'content-type: application/json' "$API$1" --data-binary "@$2")"
+  echo "$body"
+  python3 -c 'import json,sys; sys.exit("error" in json.loads(sys.argv[1]))' "$body" || fail "publish rejected"
+}
+
+# check AMOUNT RECIPIENT EXPECTED: EXPECTED is ALLOW or a deny reason code.
 check() {
-  curl -s -m 120 -X POST -H 'content-type: application/json' "$API/v1/authorize" -d "{
+  local body got
+  body="$(curl -s -m 120 -X POST -H 'content-type: application/json' "$API/v1/authorize" -d "{
     \"subject\": \"$INVOICE\", \"action\": \"transfer\",
     \"resource\": {\"kind\": \"wallet\", \"id\": \"treasury-demo\"},
-    \"amount\": $1, \"recipient\": \"$2\" }" | python3 -m json.tool
+    \"amount\": $1, \"recipient\": \"$2\" }")"
+  echo "$body" | python3 -m json.tool
+  got="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("reason") or d.get("decision") or d.get("error"))' "$body")"
+  [ "$got" = "$3" ] || fail "expected $3, got $got"
 }
 
 say "1. Alice → FinanceAgent: ≤ \$1000 to AWS (M1), stored on Arkiv"
@@ -80,13 +105,13 @@ say "2. FinanceAgent → InvoiceAgent: ≤ \$300 to AWS (M2), stored on Arkiv"
 post "/v1/mandates/$M1_ID/delegate" "$WORK/m2.json"
 
 say "3. InvoiceAgent: \$200 → AWS"
-check 200 AWS
+check 200 AWS ALLOW
 
 say "4. InvoiceAgent: \$700 → AWS"
-check 700 AWS
+check 700 AWS AMOUNT_EXCEEDED
 
 say "5. InvoiceAgent: \$100 → RandomVendor"
-check 100 RandomVendor
+check 100 RandomVendor RECIPIENT_NOT_ALLOWED
 
 say "6. Alice revokes M1 (signed locally, stored on Arkiv, undeletable)"
 "$M" revoke M1 >/dev/null
@@ -94,6 +119,10 @@ say "6. Alice revokes M1 (signed locally, stored on Arkiv, undeletable)"
 post "/v1/mandates/$M1_ID/revoke" "$WORK/rev.json"
 
 say "7. InvoiceAgent: \$100 → AWS"
-check 100 AWS
+check 100 AWS ANCESTOR_REVOKED
 
-say "Done. Every record above is public on Arkiv Tiramisu under project_id=$PROJECT_ID."
+if [ "$FAILED" -ne 0 ]; then
+  say "Demo FAILED: see the ✗ lines above."
+  exit 1
+fi
+say "All 7 steps behaved as expected. Every record above is public on Arkiv Tiramisu under project_id=$PROJECT_ID."

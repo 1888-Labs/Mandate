@@ -104,7 +104,7 @@ Every query is `project_id = … AND entity_type = …` plus the filters below. 
 | Every copy of several IDs (one chain level) | `or(eq("mandate_id", bytes32(a)), eq("mandate_id", bytes32(b)), …)`, ≤ 50 IDs | `GET /v1/mandates?id=a&id=b` |
 | Revocations of several mandates | the same OR on `entity_type = revocation`, ≤ 50 IDs | `GET /v1/revocations?mandate=a&mandate=b` |
 
-The Rust server builds each decision from batched lookups: candidates for the agent, one query per chain level for ancestors, and one for all revocations. That's three Arkiv queries for the demo's two-link chain. Queries select only `key`, `owner` and `payload`; attributes are read only to compute `depth` when publishing. The RPC charges anonymous callers against a small budget, so the adapter sends `ARKIV_API_KEY` as `X-API-KEY` when set ([friction](friction.md#6-anonymous-query-budget-runs-out-and-the-sdk-then-appears-to-hang)).
+The Rust server builds each decision from batched lookups: candidates for the agent, one query per chain level for ancestors, and one for all revocations. That's three Arkiv queries for the demo's two-link chain. Verified on Tiramisu: `scripts/demo-arkiv.sh` runs all seven demo steps through these batched queries and checks each result. Queries select only `key`, `owner` and `payload`; attributes are read only to compute `depth` when publishing. The RPC charges anonymous callers against a small budget, so the adapter sends `ARKIV_API_KEY` as `X-API-KEY` when set ([friction](friction.md#6-anonymous-query-budget-runs-out-and-the-sdk-then-appears-to-hang)).
 
 Example: candidates for InvoiceAgent's transfer check.
 
