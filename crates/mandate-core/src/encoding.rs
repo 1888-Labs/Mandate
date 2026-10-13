@@ -94,12 +94,18 @@ pub fn canonical_encoding(mandate: &UnsignedMandate) -> Vec<u8> {
     out
 }
 
-/// `keccak256(canonical_encoding(mandate))` as `0x`-prefixed lowercase hex.
+/// `keccak256(canonical_encoding(mandate))`: the 32 bytes behind a mandate ID.
+///
+/// This is also the message the issuer signs.
+pub fn mandate_digest(mandate: &UnsignedMandate) -> [u8; 32] {
+    Keccak256::digest(canonical_encoding(mandate)).into()
+}
+
+/// `mandate_digest` as `0x`-prefixed lowercase hex.
 ///
 /// The signature is never part of the ID.
 pub fn compute_mandate_id(mandate: &UnsignedMandate) -> MandateId {
-    let digest = Keccak256::digest(canonical_encoding(mandate));
-    MandateId(format!("0x{}", hex::encode(digest)))
+    MandateId(format!("0x{}", hex::encode(mandate_digest(mandate))))
 }
 
 fn put_u64(out: &mut Vec<u8>, value: u64) {

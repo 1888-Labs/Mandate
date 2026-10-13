@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mandate-core"]
+members = ["crates/mandate-core", "crates/mandate-crypto"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,6 +9,9 @@ license = "MIT"
 
 [workspace.dependencies]
 hex = "0.4"
+k256 = { version = "0.13", features = ["ecdsa"] }
+mandate-core = { path = "crates/mandate-core" }
+rand_core = { version = "0.6", features = ["getrandom"] }
 sha3 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

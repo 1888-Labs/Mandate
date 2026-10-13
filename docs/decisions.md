@@ -78,13 +78,19 @@ Two `Mandate` structs that differ only in recipient order are unequal under Rust
 
 ---
 
-## 2026-10-12 — Open: principal address case
+## 2026-10-13 — Principals are lowercase addresses (resolves the 2026-10-12 open item)
 
-**Status**
-Unresolved. To be settled in Milestone 4.
+**Decision**
+A principal's canonical form is `0x` + 40 lowercase hex digits. `mandate-crypto` derives addresses in this form and `parse_address` lowercases EIP-55 input. `sign_mandate` and `verify_mandate_signature` reject any mandate whose `issuer` or `subject` is not canonical (`NON_CANONICAL_ADDRESS`).
 
-EVM addresses are case-insensitive (EIP-55 checksums differ only in case), but `PrincipalId` currently compares exact strings and the ID encodes the exact string. So `0xAbC…` and `0xabc…` would count as different principals. Milestone 4 should normalize principals to lowercase when keys/addresses are derived, so the same address can never appear in two forms.
+**Reason**
+EVM addresses ignore case, but the mandate ID and every equality check (`child.issuer == parent.subject`) compare exact strings. Allowing more than one spelling of an address would let the same principal appear under two IDs.
 
+**Alternatives considered**
+Normalizing at comparison time. Rejected: the mandate ID would still depend on the spelling, and every comparison site would have to remember to normalize.
+
+**Consequences**
+`mandate-core` stays crypto-free and compares exact strings. The canonical-form rule is enforced at the signature boundary, which every mandate must pass through before it is trusted.
 ---
 
 ## 2026-10-12 — `can_delegate` checks the parent–child edge only
@@ -117,3 +123,22 @@ The two spec files name some required tests differently. Each test is implemente
 
 **Reason**
 Two identical tests under different names add maintenance cost and no coverage.
+
+---
+
+## 2026-10-13 — Signature scheme: EIP-191 `personal_sign` over the mandate digest
+
+**Decision**
+The issuer signs the 32-byte mandate digest (`keccak256(canonical_encoding)`) with EIP-191 `personal_sign`, using secp256k1 via the RustCrypto `k256` crate. Signatures are 65 bytes `r || s || v`, with `v` ∈ {27, 28}. Verification also accepts `v` ∈ {0, 1}, and rejects high-`s` signatures and any mandate whose stored `id` does not match its content.
+
+**Reason**
+- Ethereum-compatible as required: any wallet (MetaMask, Foundry `cast wallet sign`, ethers/viem `signMessage`) can sign a mandate by `personal_sign`-ing its ID bytes. A test pins a signature produced by Foundry 1.6.0.
+- The EIP-191 prefix stops a mandate signature from also being a valid transaction signature.
+- The verifier recomputes the digest from the content and never trusts the stored ID. Storage (Arkiv) therefore cannot change a mandate without breaking its signature or its ID.
+
+**Alternatives considered**
+EIP-712 typed data. Wallets would show it more readably, but it would mean keeping a second, parallel encoding of the mandate in sync with the canonical one. That can be revisited after v0.1.
+
+**Consequences**
+A wallet prompt shows only an opaque 32-byte hex value, not the mandate's fields. Low-`s` enforcement means each signer has exactly one valid signature per mandate. The signature is outside the ID either way.
+

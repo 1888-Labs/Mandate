@@ -14,7 +14,7 @@ mod hex_bytes;
 
 pub use capability::{Constraints, ResourceId, ResourceParseError};
 pub use delegation::can_delegate;
-pub use encoding::{canonical_encoding, compute_mandate_id};
+pub use encoding::{canonical_encoding, compute_mandate_id, mandate_digest};
 pub use error::DelegationError;
 pub use mandate::{Mandate, MandateId, UnsignedMandate};
 pub use principal::PrincipalId;
