@@ -1,4 +1,4 @@
-//! Runs the `mandate` binary through the full demo flow (BUILD_SPEC.md §29)
+//! Runs the `mandate` binary through the full demo flow (README, "How it works")
 //! in a scratch directory, checking output and exit codes.
 
 use std::path::{Path, PathBuf};

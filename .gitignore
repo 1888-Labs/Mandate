@@ -8,3 +8,7 @@ dist/
 !.env.example
 *.key
 .mandate/
+
+# Private planning documents (kept locally, not published).
+AGENTS.md
+BUILD_SPEC.md

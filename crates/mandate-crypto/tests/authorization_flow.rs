@@ -1,5 +1,5 @@
-//! Milestone 7 acceptance: the full demo flow (BUILD_SPEC.md §29, steps
-//! 1–7) with real secp256k1 signatures and `MemoryMandateStore`, no Arkiv.
+//! Milestone 7 acceptance: the full seven-step demo flow (README, "How it
+//! works") with real secp256k1 signatures and `MemoryMandateStore`, no Arkiv.
 
 use mandate_core::{
     authorize, AuthorizationDecision, AuthorizationRequest, Constraints, MemoryMandateStore,

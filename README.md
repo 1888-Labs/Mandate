@@ -520,10 +520,8 @@ mandate/
 │   └── friction.md       real Arkiv development friction
 ├── examples/
 │   └── finance-agent/    a prompt-injected agent whose payments Mandate stops
-├── scripts/
-│   └── demo-arkiv.sh     the full demo against Arkiv Tiramisu
-├── AGENTS.md             rules for coding agents working on this repo
-└── BUILD_SPEC.md         full v0.1 specification
+└── scripts/
+    └── demo-arkiv.sh     the full demo against Arkiv Tiramisu
 ```
 
 Planned: `apps/web`.
@@ -540,7 +538,7 @@ All three must pass before any change to authorization logic is merged. Every pr
 
 ## Hackathon disclosure
 
-Mandate is being built for the **Arkiv: Global Tour Stop** hackathon (Security track, with Open Source as secondary), starting 12 October 2026. All code in this repository was written during the hackathon. Development is AI-assisted (Claude Code) and directed by the author against the specification in [`BUILD_SPEC.md`](BUILD_SPEC.md).
+Mandate is being built for the **Arkiv: Global Tour Stop** hackathon (Security track, with Open Source as secondary), starting 12 October 2026. All code in this repository was written during the hackathon. Development is AI-assisted (Claude Code), directed by the author against a written specification.
 
 ## License
 

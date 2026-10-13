@@ -1,4 +1,4 @@
-// BUILD_SPEC §35: "expired data disappears from live queries", on Tiramisu.
+// Expired data must disappear from Arkiv's live queries. Checked on Tiramisu.
 //
 // Publishes a mandate that expires in 3 minutes, checks it is queryable,
 // waits past its expiry, and checks it is gone. Takes about 4 minutes.
