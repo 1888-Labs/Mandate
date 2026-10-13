@@ -17,8 +17,8 @@ pub mod store;
 mod hex_bytes;
 
 pub use authorization::{
-    authorize, AuthorizationDecision, AuthorizationEvidence, AuthorizationRequest, ChainFault,
-    Denial, DenyReason, TrustAnchors,
+    authorize, find_mandate, find_valid_revocation, AuthorizationDecision, AuthorizationEvidence,
+    AuthorizationRequest, ChainFault, Denial, DenyReason, TrustAnchors,
 };
 pub use capability::{Constraints, ResourceId, ResourceParseError};
 pub use delegation::can_delegate;

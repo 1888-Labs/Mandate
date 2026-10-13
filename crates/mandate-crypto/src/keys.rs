@@ -42,6 +42,22 @@ pub fn is_canonical_address(p: &PrincipalId) -> bool {
     }
 }
 
+/// Encode a private key as `0x`-prefixed hex, for local development
+/// key files only. Never publish or log the result.
+pub fn signing_key_to_hex(key: &SigningKey) -> String {
+    format!("0x{}", hex::encode(key.to_bytes()))
+}
+
+/// Decode a private key written by `signing_key_to_hex`.
+pub fn signing_key_from_hex(s: &str) -> Result<SigningKey, SignatureError> {
+    let digits = s.strip_prefix("0x").ok_or(SignatureError::InvalidKey)?;
+    let bytes = hex::decode(digits).map_err(|_| SignatureError::InvalidKey)?;
+    if bytes.len() != 32 {
+        return Err(SignatureError::InvalidKey);
+    }
+    SigningKey::from_slice(&bytes).map_err(|_| SignatureError::InvalidKey)
+}
+
 /// Parse an address in any letter case into its canonical form.
 pub fn parse_address(s: &str) -> Result<PrincipalId, SignatureError> {
     let p = PrincipalId(s.to_ascii_lowercase());
@@ -66,6 +82,34 @@ mod tests {
             address_of(&key),
             PrincipalId("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf".into())
         );
+    }
+
+    #[test]
+    fn key_hex_round_trips() {
+        let key = generate_signing_key();
+        let hex = signing_key_to_hex(&key);
+        assert_eq!(hex.len(), 2 + 64);
+        let back = signing_key_from_hex(&hex).unwrap();
+        assert_eq!(address_of(&back), address_of(&key));
+    }
+
+    #[test]
+    fn invalid_key_hex_is_rejected() {
+        let zero = format!("0x{}", "00".repeat(32)); // not a valid scalar
+        for bad in [
+            "",
+            "0x",
+            "0xzz",
+            "00",
+            &zero,
+            &format!("0x{}", "11".repeat(31)),
+        ] {
+            assert_eq!(
+                signing_key_from_hex(bad).err(),
+                Some(SignatureError::InvalidKey),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

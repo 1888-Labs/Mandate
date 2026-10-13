@@ -255,3 +255,18 @@ The engine must be proven against a store that behaves like the real untrusted o
 
 **Consequences**
 Lookups are linear scans, which is fine at demo scale. The Milestone 7 acceptance test (`crates/mandate-crypto/tests/authorization_flow.rs`) runs all seven demo steps against it with real signatures and planted forgeries.
+
+---
+
+## 2026-10-13 — CLI design
+
+**Decision**
+- **Local state until Arkiv exists.** The CLI keeps state in a directory (`.mandate/` by default; `--home` / `MANDATE_HOME`). `state.json` holds only public data: principal names and addresses, resource owners, signed mandates, revocations, and aliases. `keys.json` holds development private keys, written owner-only (`0600`, directory `0700`). Both files are written atomically (temp file + rename). Every command rebuilds a `MemoryMandateStore` from `state.json` and calls the same `authorize` the server will use. Nothing in the file is trusted: a hand-edited mandate fails signature verification (tested).
+- **`mandate resource own <resource> --owner <name>`** is a command the spec doesn't list. It's needed because of trust anchors: someone has to say who may start a chain. `grant` refuses non-owners up front, and the error message names the fix.
+- **Aliases.** Mandates get `M1`, `M2`, … in creation order, matching the spec's CLI examples. Full IDs and unique prefixes (≥ 6 chars) also work.
+- **`delegate` defaults.** If a flag is omitted, the child inherits it from the parent: action, resource, limit, recipients and expiry. That matches the spec example, where `--recipient` is omitted and the child stays limited to AWS. Before saving, `delegate` runs `can_delegate` and refuses a parent that is expired, revoked, badly signed or missing a parent. A rejected delegation prints the error code and stores nothing.
+- **Exit codes.** `0` success / ALLOW, `1` DENY or rejected delegation, `2` error. Scripts can use `mandate check` as a gate.
+- **Display.** Amounts print as `$N` to match the spec's demo output. The protocol itself still treats amounts as plain integers. `inspect` and `chain` judge each link with the same helpers as the engine (`find_mandate`, `find_valid_revocation`, `can_delegate`), not a reimplementation.
+
+**Consequences**
+Milestone 9 replaces the local `state.json` store with Arkiv. Keys stay local and never go to Arkiv.

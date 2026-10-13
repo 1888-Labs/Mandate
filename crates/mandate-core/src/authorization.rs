@@ -286,7 +286,7 @@ where
             if chain.len() > MAX_CHAIN_DEPTH {
                 Some(ChainFault::TooDeep)
             } else {
-                match pick_mandate(store.get_mandates(&parent_id), &parent_id, verifier) {
+                match find_mandate(store, verifier, &parent_id) {
                     Some(parent) => {
                         current = parent;
                         continue;
@@ -344,7 +344,7 @@ where
     }
 
     for (depth, m) in chain.iter().enumerate() {
-        let Some(revocation) = valid_revocation(m, store, verifier) else {
+        let Some(revocation) = find_valid_revocation(m, store, verifier) else {
             continue;
         };
         let is_leaf = depth + 1 == chain.len();
@@ -397,16 +397,17 @@ where
     })
 }
 
-/// Choose which stored copy of mandate `id` to use.
+/// The stored copy of mandate `id` to use.
 ///
-/// Prefers a copy that verifies. If none does, returns one anyway so the
-/// caller reports the bad signature rather than a missing parent. Copies
-/// whose ID is not `id` are ignored.
-fn pick_mandate<V: SignatureVerifier>(
-    mut copies: Vec<Mandate>,
-    id: &MandateId,
-    verifier: &V,
-) -> Option<Mandate> {
+/// Prefers a copy that verifies. If none does, returns one anyway, so the
+/// caller can report the bad signature rather than a missing mandate.
+/// Copies whose ID is not `id` are ignored. `None` means no copy exists.
+pub fn find_mandate<S, V>(store: &S, verifier: &V, id: &MandateId) -> Option<Mandate>
+where
+    S: MandateStore,
+    V: SignatureVerifier,
+{
+    let mut copies = store.get_mandates(id);
     copies.retain(|m| &m.id == id);
     copies.sort_by(|a, b| a.signature.cmp(&b.signature));
     match copies.iter().position(|m| verifier.verify_mandate(m)) {
@@ -418,7 +419,7 @@ fn pick_mandate<V: SignatureVerifier>(
 /// The first revocation of `mandate` that actually counts: it targets this
 /// mandate, comes from the mandate's own issuer, and is validly signed.
 /// Anything else the store returns is ignored.
-fn valid_revocation<S, V>(mandate: &Mandate, store: &S, verifier: &V) -> Option<Revocation>
+pub fn find_valid_revocation<S, V>(mandate: &Mandate, store: &S, verifier: &V) -> Option<Revocation>
 where
     S: MandateStore,
     V: SignatureVerifier,

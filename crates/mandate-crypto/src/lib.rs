@@ -10,7 +10,10 @@ pub mod signing;
 pub mod verification;
 
 pub use error::SignatureError;
-pub use keys::{address_of, generate_signing_key, is_canonical_address, parse_address, SigningKey};
+pub use keys::{
+    address_of, generate_signing_key, is_canonical_address, parse_address, signing_key_from_hex,
+    signing_key_to_hex, SigningKey,
+};
 pub use signing::{sign_mandate, sign_revocation};
 pub use verification::{
     recover_signer, verify_mandate_signature, verify_revocation_signature, EthereumVerifier,

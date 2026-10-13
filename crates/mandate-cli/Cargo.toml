@@ -1,0 +1,17 @@
+[package]
+name = "mandate-cli"
+description = "Command-line interface for Mandate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mandate"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+mandate-core = { workspace = true }
+mandate-crypto = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

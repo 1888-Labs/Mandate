@@ -15,6 +15,8 @@ pub enum SignatureError {
     IssuerMismatch,
     /// The signing backend failed.
     SigningFailed,
+    /// A private key is not 32 bytes of valid secp256k1 scalar hex.
+    InvalidKey,
 }
 
 impl SignatureError {
@@ -27,6 +29,7 @@ impl SignatureError {
             Self::Unrecoverable => "UNRECOVERABLE_SIGNATURE",
             Self::IssuerMismatch => "ISSUER_MISMATCH",
             Self::SigningFailed => "SIGNING_FAILED",
+            Self::InvalidKey => "INVALID_KEY",
         }
     }
 }
@@ -40,6 +43,7 @@ impl fmt::Display for SignatureError {
             Self::Unrecoverable => "could not recover a public key from the signature",
             Self::IssuerMismatch => "signature was not made by the issuer",
             Self::SigningFailed => "signing failed",
+            Self::InvalidKey => "private key must be 0x-prefixed 32-byte secp256k1 hex",
         };
         f.write_str(msg)
     }
