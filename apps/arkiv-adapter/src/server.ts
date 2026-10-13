@@ -4,13 +4,16 @@
 //   GET  /v1/mandates/:id                         every stored copy of a mandate ID
 //   GET  /v1/mandates?id=&id=…                    every copy of several IDs, in one query
 //   GET  /v1/mandates?subject=&action=&resource=  candidates for a subject (resource as kind:id)
+//        …&active=1                               only those not yet expired (range query)
 //   GET  /v1/mandates?parent=                     children of a mandate
-//   GET  /v1/revocations?mandate=&mandate=…       every revocation claiming any of the mandates
+//   GET  /v1/revocations?of=<id>:<issuer>&of=…    revocations of each mandate created by its issuer
 //   POST /v1/mandates                             body: signed mandate JSON
 //   POST /v1/revocations?retain_until=<unix>      body: signed revocation JSON
 //
-// Writes require `Authorization: Bearer $ADAPTER_TOKEN` when ADAPTER_TOKEN is
-// set, because they spend the adapter wallet's gas.
+// Every document returned was created ($creator) by its own issuer's wallet;
+// copies created by anyone else are dropped. Writes are made from the
+// issuer's wallet (ARKIV_ISSUER_KEYS) and require
+// `Authorization: Bearer $ADAPTER_TOKEN` when ADAPTER_TOKEN is set.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { Hex } from "viem"
@@ -18,9 +21,11 @@ import type { Hex } from "viem"
 import {
   type Arkiv,
   connect,
+  IssuerKeyUnavailable,
   MAX_IDS_PER_QUERY,
   rateLimitOf,
   type StoredDocument,
+  TooManyResults,
 } from "./arkiv.ts"
 import { InvalidDocument, parseMandate, parseRevocation, type Resource } from "./documents.ts"
 
@@ -51,7 +56,7 @@ function sendJson(res: ServerResponse, status: number, value: unknown) {
 function sendDocuments(res: ServerResponse, docs: StoredDocument[]) {
   const items = docs.map(
     (d) =>
-      `{"entityKey":${JSON.stringify(d.entityKey)},"owner":${JSON.stringify(d.owner)},"document":${d.raw}}`,
+      `{"entityKey":${JSON.stringify(d.entityKey)},"creator":${JSON.stringify(d.creator)},"owner":${JSON.stringify(d.owner)},"document":${d.raw}}`,
   )
   send(res, 200, `{"documents":[${items.join(",")}]}`)
 }
@@ -93,6 +98,24 @@ function hashParams(values: string[], name: string): Hex[] {
   return values.map((v) => hashParam(v, name))
 }
 
+/** `of=<mandateId>:<issuer>` pairs. */
+function targetParams(values: string[]): { mandateId: Hex; issuer: Hex }[] {
+  if (values.length === 0 || values.length > MAX_IDS_PER_QUERY) {
+    throw new HttpError(
+      400,
+      "INVALID_PARAMETER",
+      `between 1 and ${MAX_IDS_PER_QUERY} of= values per request`,
+    )
+  }
+  return values.map((v) => {
+    const [mandateId, issuer] = v.split(":")
+    if (!mandateId || !HASH.test(mandateId) || !issuer || !ADDRESS.test(issuer)) {
+      throw new HttpError(400, "INVALID_PARAMETER", "of= must be <mandate id>:<issuer address>")
+    }
+    return { mandateId: mandateId as Hex, issuer: issuer as Hex }
+  })
+}
+
 function resourceParam(value: string | null): Resource | undefined {
   if (value === null) return undefined
   const i = value.indexOf(":")
@@ -118,7 +141,8 @@ export function handler(arkiv: Arkiv, writeToken: string | undefined) {
         return sendJson(res, 200, {
           ok: true,
           chainId: await arkiv.chainId(),
-          writer: arkiv.writer ?? null,
+          funder: arkiv.funder ?? null,
+          issuers: arkiv.issuers,
         })
       }
 
@@ -140,16 +164,17 @@ export function handler(arkiv: Arkiv, writeToken: string | undefined) {
         }
         const action = q.get("action") ?? undefined
         const resource = resourceParam(q.get("resource"))
+        const activeAt = q.has("active") ? Math.floor(Date.now() / 1000) : undefined
         return sendDocuments(
           res,
-          await arkiv.mandatesForSubject(subject as Hex, action, resource),
+          await arkiv.mandatesForSubject(subject as Hex, action, resource, activeAt),
         )
       }
 
       if (req.method === "GET" && path === "/v1/revocations") {
         return sendDocuments(
           res,
-          await arkiv.revocationsForMany(hashParams(q.getAll("mandate"), "mandate")),
+          await arkiv.revocationsFor(targetParams(q.getAll("of"))),
         )
       }
 
@@ -183,6 +208,14 @@ export function handler(arkiv: Arkiv, writeToken: string | undefined) {
       if (e instanceof InvalidDocument) {
         return sendJson(res, 400, { error: "INVALID_DOCUMENT", message: e.message })
       }
+      if (e instanceof IssuerKeyUnavailable) {
+        return sendJson(res, 403, { error: "ISSUER_KEY_UNAVAILABLE", message: e.message })
+      }
+      if (e instanceof TooManyResults) {
+        // Fail closed: a truncated answer could hide a revocation.
+        console.error(`${req.method} ${path}: ${e.message}`)
+        return sendJson(res, 503, { error: "TOO_MANY_RESULTS", message: e.message })
+      }
       const limited = rateLimitOf(e)
       if (limited) {
         console.error(`${req.method} ${path}: Arkiv rate limit (retry after ${limited.retryAfter}s)`)
@@ -206,12 +239,21 @@ if (import.meta.main) {
     rpcUrl: process.env.ARKIV_RPC_URL || undefined,
     apiKey: process.env.ARKIV_API_KEY || undefined,
     privateKey: (process.env.ARKIV_PRIVATE_KEY as Hex | undefined) || undefined,
+    issuerKeys: (process.env.ARKIV_ISSUER_KEYS ?? "")
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0) as Hex[],
   })
   const port = Number(process.env.PORT ?? 8787)
   const host = process.env.HOST ?? "127.0.0.1"
   createServer(handler(arkiv, process.env.ADAPTER_TOKEN || undefined)).listen(port, host, () => {
     console.log(`arkiv-adapter on http://${host}:${port}  project=${projectId}`)
-    console.log(arkiv.writer ? `writer ${arkiv.writer}` : "read-only (no ARKIV_PRIVATE_KEY)")
+    console.log(`funder ${arkiv.funder ?? "(none)"}`)
+    console.log(
+      arkiv.issuers.length > 0
+        ? `publishes as ${arkiv.issuers.join(", ")}`
+        : "read-only: no ARKIV_ISSUER_KEYS, so it cannot publish",
+    )
     if (!process.env.ARKIV_API_KEY) {
       console.log("no ARKIV_API_KEY: using the anonymous RPC budget, which is easy to exhaust")
     }

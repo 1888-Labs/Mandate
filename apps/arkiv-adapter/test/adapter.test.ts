@@ -11,8 +11,10 @@ import {
   type Arkiv,
   ArkivRateLimited,
   connect,
+  IssuerKeyUnavailable,
   rateLimitOf,
   type StoredDocument,
+  TooManyResults,
 } from "../src/arkiv.ts"
 import {
   InvalidDocument,
@@ -85,7 +87,9 @@ test("mandate attributes are namespaced and typed", () => {
 })
 
 const LIMITED = `0x${"ee".repeat(32)}`
-const seenIds: string[][] = []
+const FLOODED = `0x${"ff".repeat(32)}`
+const ISSUER = `0x${"11".repeat(20)}`
+const seenIds: unknown[] = []
 
 /** A fake Arkiv that records writes and serves them back. */
 function fakeArkiv() {
@@ -93,26 +97,34 @@ function fakeArkiv() {
   const doc = (raw: string): StoredDocument => ({
     entityKey: `0x${"ab".repeat(32)}`,
     owner: `0x${"cd".repeat(20)}`,
+    creator: `0x${"cd".repeat(20)}`,
     raw,
     depth: null,
   })
   const fake = {
-    writer: undefined,
+    funder: undefined,
+    issuers: [],
     chainId: async () => 7738577,
     mandatesById: async () => stored.map((s) => doc(s.raw)),
     mandatesByIds: async (ids: string[]) => {
       seenIds.push(ids)
       return stored.map((s) => doc(s.raw))
     },
-    revocationsForMany: async (ids: string[]) => {
-      seenIds.push(ids)
-      if (ids.includes(LIMITED)) throw new Error("outer", { cause: new ArkivRateLimited("budget exhausted", 609) })
+    revocationsFor: async (targets: { mandateId: string; issuer: string }[]) => {
+      seenIds.push(targets)
+      const ids = targets.map((t) => t.mandateId)
+      if (ids.includes(LIMITED)) {
+        throw new Error("outer", { cause: new ArkivRateLimited("budget exhausted", 609) })
+      }
+      if (ids.includes(FLOODED)) throw new TooManyResults("more than 1000 revocation entities match")
       return []
     },
     mandatesForSubject: async () => stored.map((s) => doc(s.raw)),
     children: async () => [],
-    revocationsFor: async () => [],
     createMandate: async (raw: string) => {
+      if (raw.includes('"issuer": "0x0000000000000000000000000000000000000000"')) {
+        throw new IssuerKeyUnavailable("this adapter cannot publish as 0x00…00")
+      }
       stored.push({ raw })
       return { entityKey: `0x${"ab".repeat(32)}`, txHash: null, created: true }
     },
@@ -194,8 +206,18 @@ test("batched lookups pass every id through in one call", async () => {
     const b = `0x${"bb".repeat(32)}`
     seenIds.length = 0
     assert.equal((await fetch(`${base}/v1/mandates?id=${a}&id=${b}`)).status, 200)
-    assert.equal((await fetch(`${base}/v1/revocations?mandate=${a}&mandate=${b}`)).status, 200)
-    assert.deepEqual(seenIds, [[a, b], [a, b]])
+    const of = `of=${a}:${ISSUER}&of=${b}:${ISSUER}`
+    assert.equal((await fetch(`${base}/v1/revocations?${of}`)).status, 200)
+    assert.deepEqual(seenIds, [
+      [a, b],
+      [
+        { mandateId: a, issuer: ISSUER },
+        { mandateId: b, issuer: ISSUER },
+      ],
+    ])
+    // The issuer is required: revocations are only ever looked up by creator.
+    assert.equal((await fetch(`${base}/v1/revocations?of=${a}`)).status, 400)
+    assert.equal((await fetch(`${base}/v1/revocations?mandate=${a}`)).status, 400)
     const tooMany = Array.from({ length: 51 }, () => `id=${a}`).join("&")
     assert.equal((await fetch(`${base}/v1/mandates?${tooMany}`)).status, 400)
   })
@@ -203,7 +225,7 @@ test("batched lookups pass every id through in one call", async () => {
 
 test("an Arkiv rate limit becomes a fast, explicit 503", async () => {
   await withServer(undefined, async (base) => {
-    const res = await fetch(`${base}/v1/revocations?mandate=${LIMITED}`)
+    const res = await fetch(`${base}/v1/revocations?of=${LIMITED}:${ISSUER}`)
     assert.equal(res.status, 503)
     const body = await res.json()
     assert.equal(body.error, "ARKIV_RATE_LIMITED")
@@ -237,3 +259,22 @@ test("a 429 from the RPC fails fast instead of sleeping for Retry-After", async 
     rpc.close()
   }
 })
+
+test("a flooded lookup fails closed instead of truncating", async () => {
+  await withServer(undefined, async (base) => {
+    const res = await fetch(`${base}/v1/revocations?of=${FLOODED}:${ISSUER}`)
+    assert.equal(res.status, 503)
+    assert.equal((await res.json()).error, "TOO_MANY_RESULTS")
+  })
+})
+
+test("publishing as an issuer whose key the adapter lacks is refused", async () => {
+  await withServer(undefined, async (base) => {
+    const m = JSON.parse(MANDATE_RAW)
+    const body = JSON.stringify({ ...m, issuer: `0x${"00".repeat(20)}` }, null, 2)
+    const res = await fetch(`${base}/v1/mandates`, { method: "POST", body })
+    assert.equal(res.status, 403)
+    assert.equal((await res.json()).error, "ISSUER_KEY_UNAVAILABLE")
+  })
+})
+

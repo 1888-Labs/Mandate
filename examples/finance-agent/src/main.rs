@@ -7,6 +7,7 @@
 //!
 //!   cargo run -p finance-agent                         # self-contained, in-memory
 //!   cargo run -p finance-agent -- --adapter-url URL    # state on Arkiv via the adapter
+//!     (both this and the adapter need ARKIV_ISSUER_KEYS=<alice key>,<finance key>)
 //!
 //! Exits 0 if every outcome is as expected, 1 otherwise.
 
@@ -18,7 +19,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use mandate_core::{Constraints, TrustAnchors, UnsignedMandate};
-use mandate_crypto::{address_of, generate_signing_key, sign_mandate};
+use mandate_crypto::{
+    address_of, generate_signing_key, sign_mandate, signing_key_from_hex, SigningKey,
+};
 use mandate_server::adapter::AdapterBackend;
 use mandate_server::backend::{Backend, MemoryBackend};
 use mandate_server::{router, AppState};
@@ -47,6 +50,22 @@ fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+/// Alice's and FinanceAgent's keys from `ARKIV_ISSUER_KEYS` (`alice,finance`),
+/// the same variable the adapter reads.
+fn issuer_keys_from_env() -> Result<(SigningKey, SigningKey), String> {
+    let help =
+        "set ARKIV_ISSUER_KEYS=<alice key>,<finance key> for both this example and the adapter";
+    let raw = std::env::var("ARKIV_ISSUER_KEYS").map_err(|_| help.to_string())?;
+    let keys: Vec<&str> = raw.split(',').map(str::trim).collect();
+    match keys.as_slice() {
+        [a, f] => Ok((
+            signing_key_from_hex(a).map_err(|e| format!("alice key: {e}"))?,
+            signing_key_from_hex(f).map_err(|e| format!("finance key: {e}"))?,
+        )),
+        _ => Err(help.to_string()),
+    }
 }
 
 /// Start `mandate-server` in-process on a random local port.
@@ -89,8 +108,13 @@ fn line(label: &str, text: impl AsRef<str>) {
 }
 
 async fn run(adapter_url: Option<String>) -> Result<bool, String> {
-    let alice = generate_signing_key();
-    let finance = generate_signing_key();
+    // On Arkiv, issuers publish from their own wallets, so the adapter must
+    // hold Alice's and FinanceAgent's keys: share them via ARKIV_ISSUER_KEYS.
+    let (alice, finance) = if adapter_url.is_some() {
+        issuer_keys_from_env()?
+    } else {
+        (generate_signing_key(), generate_signing_key())
+    };
     let invoice = generate_signing_key();
     let names = [
         (address_of(&alice), "alice"),

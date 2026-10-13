@@ -53,8 +53,12 @@ INVOICE="$(addr invoice-agent)"
 M1_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$WORK/m1.json")"
 
 say "Starting arkiv-adapter (namespace $PROJECT_ID) and mandate-server"
+# Issuers publish from their own wallets, so Arkiv's $creator is the issuer.
+# Hand the adapter Alice's and FinanceAgent's local development keys; the
+# adapter tops their wallets up with gas from its funder wallet.
+ISSUER_KEYS="$(python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); print(k["alice"]+","+k["finance-agent"])' "$MANDATE_HOME/keys.json")"
 # Run node directly (not in a subshell) so $! is its PID and cleanup stops it.
-ARKIV_PROJECT_ID="$PROJECT_ID" PORT="$ADAPTER_PORT" ADAPTER_TOKEN="$TOKEN" \
+ARKIV_PROJECT_ID="$PROJECT_ID" PORT="$ADAPTER_PORT" ADAPTER_TOKEN="$TOKEN" ARKIV_ISSUER_KEYS="$ISSUER_KEYS" \
   node --env-file=apps/arkiv-adapter/.env apps/arkiv-adapter/src/server.ts >"$WORK/adapter.log" 2>&1 &
 PIDS+=($!)
 ADAPTER_URL="http://127.0.0.1:$ADAPTER_PORT" ADAPTER_TOKEN="$TOKEN" PORT="$SERVER_PORT" \

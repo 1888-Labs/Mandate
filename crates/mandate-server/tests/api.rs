@@ -12,7 +12,7 @@ use mandate_core::{
     UnsignedMandate, UnsignedRevocation,
 };
 use mandate_crypto::{address_of, generate_signing_key, sign_mandate, sign_revocation, SigningKey};
-use mandate_server::backend::{Backend, BackendError, MemoryBackend, Published};
+use mandate_server::backend::{ArkivRef, Backend, BackendError, MemoryBackend, Published, Stored};
 use mandate_server::{router, AppState, Clock};
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -415,6 +415,10 @@ async fn expiry_uses_the_server_clock() {
     assert_eq!(r["expiredMandateId"], json!(m2.id));
 }
 
+fn down() -> BackendError {
+    BackendError::Unavailable("connection refused".into())
+}
+
 /// A backend that can't be reached.
 struct DownBackend;
 
@@ -422,25 +426,29 @@ impl Backend for DownBackend {
     fn name(&self) -> &'static str {
         "down"
     }
-    async fn mandates_by_ids(&self, _: &[MandateId]) -> Result<Vec<Mandate>, BackendError> {
-        Err(BackendError("connection refused".into()))
+    async fn mandates_by_ids(&self, _: &[MandateId]) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        Err(down())
     }
     async fn mandates_for_subject(
         &self,
         _: &PrincipalId,
         _: Option<&str>,
         _: Option<&ResourceId>,
-    ) -> Result<Vec<Mandate>, BackendError> {
-        Err(BackendError("connection refused".into()))
+        _: Option<u64>,
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        Err(down())
     }
-    async fn revocations_for(&self, _: &[MandateId]) -> Result<Vec<Revocation>, BackendError> {
-        Err(BackendError("connection refused".into()))
+    async fn revocations_for(
+        &self,
+        _: &[(MandateId, PrincipalId)],
+    ) -> Result<Vec<Stored<Revocation>>, BackendError> {
+        Err(down())
     }
     async fn publish_mandate(&self, _: &Mandate) -> Result<Published, BackendError> {
-        Err(BackendError("connection refused".into()))
+        Err(down())
     }
     async fn publish_revocation(&self, _: &Revocation, _: u64) -> Result<Published, BackendError> {
-        Err(BackendError("connection refused".into()))
+        Err(down())
     }
 }
 
@@ -473,7 +481,10 @@ impl Backend for NoRevocations {
     fn name(&self) -> &'static str {
         "flaky"
     }
-    async fn mandates_by_ids(&self, ids: &[MandateId]) -> Result<Vec<Mandate>, BackendError> {
+    async fn mandates_by_ids(
+        &self,
+        ids: &[MandateId],
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
         self.0.mandates_by_ids(ids).await
     }
     async fn mandates_for_subject(
@@ -481,11 +492,15 @@ impl Backend for NoRevocations {
         s: &PrincipalId,
         a: Option<&str>,
         r: Option<&ResourceId>,
-    ) -> Result<Vec<Mandate>, BackendError> {
-        self.0.mandates_for_subject(s, a, r).await
+        t: Option<u64>,
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        self.0.mandates_for_subject(s, a, r, t).await
     }
-    async fn revocations_for(&self, _: &[MandateId]) -> Result<Vec<Revocation>, BackendError> {
-        Err(BackendError("timeout".into()))
+    async fn revocations_for(
+        &self,
+        _: &[(MandateId, PrincipalId)],
+    ) -> Result<Vec<Stored<Revocation>>, BackendError> {
+        Err(BackendError::Unavailable("timeout".into()))
     }
     async fn publish_mandate(&self, m: &Mandate) -> Result<Published, BackendError> {
         self.0.publish_mandate(m).await
@@ -513,4 +528,181 @@ async fn failed_revocation_lookup_fails_closed() {
     )
     .await;
     assert_eq!(r.0, StatusCode::SERVICE_UNAVAILABLE, "{}", r.1);
+}
+
+/// Wraps the memory backend but reports every revocation as created by
+/// someone other than its issuer, as a forged entity on Arkiv would be.
+struct ForeignRevocations(MemoryBackend);
+
+impl Backend for ForeignRevocations {
+    fn name(&self) -> &'static str {
+        "foreign"
+    }
+    async fn mandates_by_ids(
+        &self,
+        ids: &[MandateId],
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        self.0.mandates_by_ids(ids).await
+    }
+    async fn mandates_for_subject(
+        &self,
+        s: &PrincipalId,
+        a: Option<&str>,
+        r: Option<&ResourceId>,
+        t: Option<u64>,
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        self.0.mandates_for_subject(s, a, r, t).await
+    }
+    async fn revocations_for(
+        &self,
+        targets: &[(MandateId, PrincipalId)],
+    ) -> Result<Vec<Stored<Revocation>>, BackendError> {
+        let mut out = self.0.revocations_for(targets).await?;
+        for r in &mut out {
+            r.arkiv = ArkivRef {
+                entity_key: Some("0xforged".into()),
+                creator: Some(PrincipalId(format!("0x{}", "66".repeat(20)))),
+            };
+        }
+        Ok(out)
+    }
+    async fn publish_mandate(&self, m: &Mandate) -> Result<Published, BackendError> {
+        self.0.publish_mandate(m).await
+    }
+    async fn publish_revocation(&self, r: &Revocation, t: u64) -> Result<Published, BackendError> {
+        self.0.publish_revocation(r, t).await
+    }
+}
+
+#[tokio::test]
+async fn revocations_not_created_by_their_issuer_are_ignored() {
+    // Defence in depth: even if the backend returned a revocation whose
+    // $creator isn't the issuer, the server itself refuses to use it.
+    let d = demo_with(ForeignRevocations(MemoryBackend::new()));
+    let (m1, _) = d.setup().await;
+    let rev = d.revocation(&m1, &d.alice);
+    let uri = format!("/v1/mandates/{}/revoke", m1.id);
+    let (s, _) = call(&d.app, "POST", &uri, Some(json!(rev))).await;
+    assert_eq!(s, StatusCode::CREATED);
+    assert_eq!(d.ask(200, "AWS").await["decision"], "ALLOW");
+}
+
+#[tokio::test]
+async fn chain_and_listing_show_arkiv_creator() {
+    let d = demo();
+    let (m1, m2) = d.setup().await;
+    let (_, chain) = call(
+        &d.app,
+        "GET",
+        &format!("/v1/mandates/{}/chain", m2.id),
+        None,
+    )
+    .await;
+    assert_eq!(
+        chain["arkiv"][&m1.id.0]["creator"],
+        json!(address_of(&d.alice))
+    );
+    assert_eq!(
+        chain["arkiv"][&m2.id.0]["creator"],
+        json!(address_of(&d.finance))
+    );
+
+    let rev = d.revocation(&m1, &d.alice);
+    call(
+        &d.app,
+        "POST",
+        &format!("/v1/mandates/{}/revoke", m1.id),
+        Some(json!(rev)),
+    )
+    .await;
+    let (_, chain) = call(
+        &d.app,
+        "GET",
+        &format!("/v1/mandates/{}/chain", m2.id),
+        None,
+    )
+    .await;
+    assert_eq!(chain["revocations"][0]["revocation"]["id"], json!(rev.id));
+    assert_eq!(
+        chain["revocations"][0]["arkiv"]["creator"],
+        json!(address_of(&d.alice))
+    );
+
+    let uri = format!("/v1/agents/{}/mandates", address_of(&d.invoice));
+    let (_, list) = call(&d.app, "GET", &uri, None).await;
+    assert_eq!(
+        list["mandates"][0]["arkiv"]["creator"],
+        json!(address_of(&d.finance))
+    );
+}
+
+#[tokio::test]
+async fn active_listing_uses_a_range_filter_on_expiry() {
+    let d = demo();
+    let (_, m2) = d.setup().await;
+    let uri = format!("/v1/agents/{}/mandates?active=true", address_of(&d.invoice));
+    let (_, list) = call(&d.app, "GET", &uri, None).await;
+    assert_eq!(list["mandates"].as_array().unwrap().len(), 1);
+
+    d.clock.store(m2.expires_at, Ordering::SeqCst);
+    let (_, list) = call(&d.app, "GET", &uri, None).await;
+    assert_eq!(
+        list["mandates"].as_array().unwrap().len(),
+        0,
+        "expired M2 is not active"
+    );
+    let all = format!("/v1/agents/{}/mandates", address_of(&d.invoice));
+    let (_, list) = call(&d.app, "GET", &all, None).await;
+    assert_eq!(
+        list["mandates"][0]["status"], "EXPIRED",
+        "but it is still listed without ?active"
+    );
+}
+
+/// A backend that refuses every write, like an adapter without the issuer's key.
+struct RefusingWrites(MemoryBackend);
+
+impl Backend for RefusingWrites {
+    fn name(&self) -> &'static str {
+        "refusing"
+    }
+    async fn mandates_by_ids(
+        &self,
+        ids: &[MandateId],
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        self.0.mandates_by_ids(ids).await
+    }
+    async fn mandates_for_subject(
+        &self,
+        s: &PrincipalId,
+        a: Option<&str>,
+        r: Option<&ResourceId>,
+        t: Option<u64>,
+    ) -> Result<Vec<Stored<Mandate>>, BackendError> {
+        self.0.mandates_for_subject(s, a, r, t).await
+    }
+    async fn revocations_for(
+        &self,
+        targets: &[(MandateId, PrincipalId)],
+    ) -> Result<Vec<Stored<Revocation>>, BackendError> {
+        self.0.revocations_for(targets).await
+    }
+    async fn publish_mandate(&self, _: &Mandate) -> Result<Published, BackendError> {
+        Err(BackendError::Rejected {
+            code: "ISSUER_KEY_UNAVAILABLE".into(),
+            message: "this adapter cannot publish as that issuer".into(),
+        })
+    }
+    async fn publish_revocation(&self, r: &Revocation, t: u64) -> Result<Published, BackendError> {
+        self.0.publish_revocation(r, t).await
+    }
+}
+
+#[tokio::test]
+async fn backend_rejections_are_reported_not_hidden() {
+    let d = demo_with(RefusingWrites(MemoryBackend::new()));
+    let (s, b) = call(&d.app, "POST", "/v1/mandates", Some(json!(d.m1()))).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
+    assert_eq!(b["error"], "PUBLISH_REJECTED");
+    assert_eq!(b["backendError"], "ISSUER_KEY_UNAVAILABLE");
 }

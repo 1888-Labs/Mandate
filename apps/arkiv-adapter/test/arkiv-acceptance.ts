@@ -11,20 +11,23 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { createWalletClient } from "@arkiv-network/sdk"
-import { str } from "@arkiv-network/sdk/attr"
+import { createPublicClient, createWalletClient } from "@arkiv-network/sdk"
+import { bytes32, str } from "@arkiv-network/sdk/attr"
+import { and, eq } from "@arkiv-network/sdk/query"
+import { ExpirationTime } from "@arkiv-network/sdk/utils"
 import { tiramisu } from "@arkiv-network/sdk/chains"
-import { type Hex, http } from "viem"
+import { type Hex, http, stringToBytes } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 
 import { BURN_ADDRESS, connect } from "../src/arkiv.ts"
+import { revocationAttributes } from "../src/documents.ts"
 import { handler } from "../src/server.ts"
 
 const privateKey = process.env.ARKIV_PRIVATE_KEY as Hex | undefined
@@ -54,6 +57,10 @@ cli("revoke", "M1")
 const m1Raw = cli("export", "M1").trim()
 const m2Raw = cli("export", "M2").trim()
 const revocationRaw = cli("export", "M1", "--revocations").trim().slice(1, -1).trim() // unwrap [ ]
+// The issuers' development keys, so the adapter can publish as them.
+const keys = JSON.parse(readFileSync(join(home, "keys.json"), "utf8")) as Record<string, Hex>
+const aliceKey = keys.alice as Hex
+const financeKey = keys["finance-agent"] as Hex
 rmSync(home, { recursive: true, force: true })
 
 const m1 = JSON.parse(m1Raw)
@@ -62,7 +69,14 @@ const revocation = JSON.parse(revocationRaw)
 
 // --- Adapter in-process, against Tiramisu ---
 
-const arkiv = connect({ projectId, rpcUrl: process.env.ARKIV_RPC_URL || undefined, privateKey })
+const rpcUrl = process.env.ARKIV_RPC_URL || undefined
+const apiKey = process.env.ARKIV_API_KEY || undefined
+const arkiv = connect({ projectId, rpcUrl, apiKey, privateKey, issuerKeys: [aliceKey, financeKey] })
+const transport = http(rpcUrl, {
+  fetchOptions: apiKey ? { headers: { "X-API-KEY": apiKey } } : {},
+})
+const walletOf = (key: Hex) =>
+  createWalletClient({ chain: tiramisu, transport, account: privateKeyToAccount(key) })
 const token = randomBytes(16).toString("hex")
 const server = createServer(handler(arkiv, token))
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
@@ -87,15 +101,17 @@ let step = 0
 const ok = (what: string) => console.log(`✓ ${++step}. ${what}`)
 
 try {
-  console.log(`namespace ${projectId}, writer ${arkiv.writer}\n`)
+  console.log(`namespace ${projectId}, funder ${arkiv.funder}, issuers ${arkiv.issuers}\n`)
 
   const created1 = await post("/v1/mandates", m1Raw)
   assert.equal(created1.status, 201, JSON.stringify(created1.json))
-  ok(`create M1 → entity ${created1.json.entityKey}`)
+  ok(`create M1 from Alice's own wallet → entity ${created1.json.entityKey}`)
 
   const byId = await get(`/v1/mandates/${m1.id}`)
   assert.ok(byId.includes(m1Raw), "M1 must come back byte-for-byte")
-  ok("query M1 by ID (returned byte-for-byte)")
+  const m1Doc = JSON.parse(byId).documents[0]
+  assert.equal(m1Doc.creator.toLowerCase(), m1.issuer, "$creator must be the issuer")
+  ok("query M1 by ID: byte-for-byte, and $creator is Alice")
 
   const created2 = await post("/v1/mandates", m2Raw)
   assert.equal(created2.status, 201, JSON.stringify(created2.json))
@@ -117,35 +133,54 @@ try {
   assert.equal(createdR.status, 201, JSON.stringify(createdR.json))
   ok(`create revocation of M1 → entity ${createdR.json.entityKey}`)
 
-  const revs = JSON.parse(await get(`/v1/revocations?mandate=${m1.id}`))
+  const revPath = `/v1/revocations?of=${m1.id}:${m1.issuer}`
+  const revs = JSON.parse(await get(revPath))
   const stored = revs.documents.find((d: { document: { id: string } }) => d.document.id === revocation.id)
-  assert.ok(stored, "revocation must be found by mandate ID")
-  assert.ok((await get(`/v1/revocations?mandate=${m1.id}`)).includes(revocationRaw))
-  assert.equal(stored.owner.toLowerCase(), BURN_ADDRESS.toLowerCase())
-  ok("query revocation of M1 (owned by the burn address)")
+  assert.ok(stored, "revocation must be found by mandate ID + creator")
+  assert.ok((await get(revPath)).includes(revocationRaw))
+  assert.equal(stored.creator.toLowerCase(), m1.issuer, "created by Alice")
+  assert.equal(stored.owner.toLowerCase(), BURN_ADDRESS.toLowerCase(), "owned by the burn address")
+  ok("query revocation of M1: created by Alice, owned by the burn address")
+
+  // Someone else writes a fake "revocation of M1 by Alice" into our namespace.
+  const fake = JSON.stringify({ ...revocation, reason: "forged", signature: `0x${"00".repeat(65)}` })
+  const intruder = walletOf(privateKey)
+  const { entityKey: fakeKey } = await intruder.createEntity({
+    payload: stringToBytes(fake),
+    contentType: "application/json",
+    attributes: revocationAttributes(projectId, { ...revocation, reason: "forged" }),
+    expires: ExpirationTime.fromHours(1),
+  })
+  const anyone = await createPublicClient({ chain: tiramisu, transport })
+    .select({ key: true })
+    .where(and(eq("project_id", str(projectId)), eq("mandate_id", bytes32(m1.id))))
+    .fetch()
+  assert.ok(
+    anyone.entities.some((e) => e.key === fakeKey),
+    "the fake is on Arkiv and matches the mandate_id attribute",
+  )
+  const filtered = await get(revPath)
+  assert.ok(!filtered.includes(fakeKey), "the $creator filter must exclude it")
+  ok("a fake revocation from another wallet is excluded by the $creator filter")
 
   const again = await post("/v1/mandates", m1Raw)
   assert.equal(again.status, 200)
   assert.equal(again.json.created, false)
   ok("re-publishing M1 is a no-op")
 
-  const wallet = createWalletClient({
-    chain: tiramisu,
-    transport: http(process.env.ARKIV_RPC_URL || undefined),
-    account: privateKeyToAccount(privateKey),
-  })
+  const alice = walletOf(aliceKey)
   // Must fail *because of ownership*, not for some unrelated reason.
   await assert.rejects(
-    wallet.deleteEntity({ entityKey: createdR.json.entityKey }),
+    alice.deleteEntity({ entityKey: createdR.json.entityKey }),
     /owned by 0x0{36}dead/i,
   )
-  ok("adapter wallet cannot delete the revocation")
+  ok("not even Alice can delete her revocation (burn-address owner)")
 
   await assert.rejects(
-    wallet.patchEntity({ entityKey: created1.json.entityKey, set: { tampered: str("yes") } }),
+    alice.patchEntity({ entityKey: created1.json.entityKey, set: { tampered: str("yes") } }),
     /created readonly/i,
   )
-  ok("mandate entity is read-only (patch rejected)")
+  ok("Alice cannot patch her own mandate entity (read-only)")
 
   console.log("\nMilestone 9 acceptance: all checks passed.")
 } finally {

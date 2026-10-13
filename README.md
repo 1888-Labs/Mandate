@@ -122,7 +122,7 @@ Mandate needs a **shared, queryable, time-scoped** record of who has been grante
 | IPFS | Content-addressed, but not a live queryable dataset. You can't ask "active mandates for agent X on resource Y". |
 | Subgraph | Indexes data that lives somewhere else, so we'd first have to invent a contract and events to index. |
 
-On Arkiv, each mandate is an entity whose lifetime tracks the mandate's expiry, with queryable attributes (subject, action, resource, parent). Revocations are entities too. The Rust engine still checks every signature and every expiry itself: Arkiv provides **availability and discoverability**, never **authority**.
+On Arkiv, each mandate is an entity **created by its issuer's own wallet**, so Arkiv's immutable `$creator` *is* the person who granted the authority. Each entity's lifetime tracks the mandate's expiry, and its typed attributes (subject, action, resource, parent, expiry) make it queryable. Revocations are entities too, looked up only *by their issuer* (`$creator`) and handed to a burn address in the same transaction, so nobody can ever delete one. Independently of Arkiv, the Rust engine checks every signature, delegation link and expiry itself.
 
 **What never goes on Arkiv:** private keys, seed phrases, API secrets, prompts, model reasoning, private tool arguments or personal data. Only signed mandates, signed revocations and public authorization metadata.
 
@@ -297,7 +297,7 @@ curl -s localhost:8080/v1/authorize -H 'content-type: application/json' -d '{
 }
 ```
 
-An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `effectiveConstraints`. Every denial has a stable `reason` code plus its evidence (`revokedMandateId` and `revocationId`, `expiredMandateId`, `allowedRecipients`, …). Some things are deliberate:
+An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `effectiveConstraints`. The mandate, chain and agent endpoints also return each record's Arkiv `entityKey` and `$creator`, so a client can check every link on Arkiv for itself. `GET /v1/agents/{address}/mandates?active=true` lists only unexpired mandates, using a range query on the `expires_at` attribute. Every denial has a stable `reason` code plus its evidence (`revokedMandateId` and `revocationId`, `expiredMandateId`, `allowedRecipients`, …). Some things are deliberate:
 - **The server's clock decides expiry.** A client-sent `timestamp` is rejected, so agents can't backdate requests.
 - **Unreachable state fails closed.** If Arkiv state can't be read, the answer is `503 STATE_UNAVAILABLE`, never a decision.
 
@@ -435,7 +435,9 @@ Mandate v0.1 is designed to reject each of the following. ✅ means it's impleme
 | Ancestor revoked | Full-chain check on every request | ✅ |
 | Forged or replayed revocation | Must target the exact mandate, be signed by its issuer, and use the revocation domain separator | ✅ |
 | Forged copy of a real mandate published to break a chain | Store returns every copy; the engine uses the one that verifies | ✅ |
-| Operator deletes a revocation to revive a mandate | Revocation entities are handed to a burn address in the creating transaction | ✅ (verified on Tiramisu) |
+| Operator deletes a revocation to revive a mandate | Revocation entities are handed to a burn address in the creating transaction; not even the issuer can delete them | ✅ (verified on Tiramisu) |
+| Someone else publishes records "from" Alice | Only entities whose on-chain `$creator` is the document's issuer are used, checked in the Arkiv query and again in Rust | ✅ (verified on Tiramisu) |
+| Flood of fake revocations to hide the real one | Revocations are queried with `$creator = issuer`; any other lookup over the result cap fails closed | ✅ |
 
 ## Threat model
 

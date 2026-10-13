@@ -123,6 +123,34 @@ With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9
 
 ---
 
+## 7. Tested path: per-mandate `$creator` filters inside one OR query (worked first time)
+
+*2026-10-13 · `@arkiv-network/sdk` 0.8.1, Tiramisu*
+
+**Goal:** look up the revocations of several mandates in one query, each only if created by *that mandate's* issuer, so entities from anyone else can't crowd out a real revocation.
+
+**What we tried:** `createdBy()` takes a single address, so it can't express a different creator per mandate. Instead we put `eq("$creator", addr(issuer))` inside the filter tree, the same thing `createdBy()` does internally (`src/query/queryBuilder.ts`):
+
+```ts
+.where(and(
+  eq("project_id", str(projectId)), eq("entity_type", str("revocation")),
+  or(
+    and(eq("mandate_id", bytes32(a)), eq("$creator", addr(issuerA))),
+    and(eq("mandate_id", bytes32(b)), eq("$creator", addr(issuerB))),
+  ),
+))
+```
+
+**Expected:** only revocations of A created by issuerA and of B created by issuerB.
+
+**Actual:** exactly that, on the first attempt. To check it, `npm run test:arkiv` (step 8) has a *different* wallet create a fake "revocation of M1 by Alice" with identical attributes. A plain `mandate_id` query returns the fake; the `$creator` query does not.
+
+**Reproduce:** `cargo build -p mandate-cli && cd apps/arkiv-adapter && npm run test:arkiv` (needs a funded `ARKIV_PRIVATE_KEY`).
+
+**Suggestion:** document that `$creator` / `$owner` can be used in `eq(...)` anywhere in an expression, not only through `createdBy()` / `ownedBy()`. It's what makes per-row authorship filters possible, and it isn't obvious from the README.
+
+---
+
 ## Positive notes
 
 - **`ExpirationTime.atDate(date)`** maps exactly onto a mandate's signed `expiresAt`. "Authorization expiry ≈ entity lifetime" took one line.

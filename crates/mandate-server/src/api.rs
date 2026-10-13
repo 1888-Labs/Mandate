@@ -180,9 +180,14 @@ fn describe(reason: &DenyReason) -> String {
     }
 }
 
-/// A mandate plus its current status (`ACTIVE` or a deny code).
-pub fn mandate_status_json(m: &Mandate, status: Result<(), &Denial>) -> Value {
-    let mut v = json!({ "mandate": m });
+/// A mandate plus its current status (`ACTIVE` or a deny code) and where it
+/// lives on Arkiv (entity key and `$creator`).
+pub fn mandate_status_json(
+    m: &Mandate,
+    status: Result<(), &Denial>,
+    arkiv: Option<&crate::backend::ArkivRef>,
+) -> Value {
+    let mut v = json!({ "mandate": m, "arkiv": arkiv });
     if let Value::Object(map) = &mut v {
         match status {
             Ok(()) => {

@@ -5,13 +5,13 @@
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mandate_core::{
-    authorize, can_delegate, find_mandate, verify_chain, AuthorizationRequest, Mandate, MandateId,
-    Revocation, TrustAnchors,
+    authorize, can_delegate, find_mandate, find_valid_revocation, verify_chain,
+    AuthorizationRequest, Mandate, MandateId, Revocation, TrustAnchors,
 };
 use mandate_crypto::{verify_mandate_signature, verify_revocation_signature, EthereumVerifier};
 use serde_json::{json, Value};
@@ -46,12 +46,25 @@ pub fn router<B: Backend>(state: AppState<B>) -> Router {
 }
 
 fn unavailable(e: BackendError) -> ApiError {
-    warn!(error = %e, "authorization state unavailable");
-    ApiError::new(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "STATE_UNAVAILABLE",
-        format!("authorization state could not be read: {e}"),
-    )
+    match e {
+        BackendError::Rejected { code, message } => {
+            warn!(code = %code, "backend rejected the request");
+            ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "PUBLISH_REJECTED",
+                message,
+            )
+            .with(json!({ "backendError": code }))
+        }
+        BackendError::Unavailable(m) => {
+            warn!(error = %m, "authorization state unavailable");
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "STATE_UNAVAILABLE",
+                format!("authorization state could not be read: {m}"),
+            )
+        }
+    }
 }
 
 fn bad_json(e: JsonRejection) -> ApiError {
@@ -79,11 +92,11 @@ fn parse_id(raw: &str) -> Result<MandateId, ApiError> {
 async fn load<B: Backend>(
     state: &AppState<B>,
     id: &MandateId,
-) -> Result<(Mandate, mandate_core::MemoryMandateStore), ApiError> {
-    let store = snapshot::for_mandate(&state.backend, id)
+) -> Result<(Mandate, snapshot::Snapshot), ApiError> {
+    let snap = snapshot::for_mandate(&state.backend, id)
         .await
         .map_err(unavailable)?;
-    let mandate = find_mandate(&store, &EthereumVerifier, id)
+    let mandate = find_mandate(&snap.store, &EthereumVerifier, id)
         .filter(|m| verify_mandate_signature(m).is_ok())
         .ok_or_else(|| {
             ApiError::new(
@@ -92,7 +105,7 @@ async fn load<B: Backend>(
                 format!("no valid mandate {id}"),
             )
         })?;
-    Ok((mandate, store))
+    Ok((mandate, snap))
 }
 
 async fn health<B: Backend>(State(state): Shared<B>) -> Json<Value> {
@@ -112,10 +125,10 @@ async fn authorize_handler<B: Backend>(
         recipient: body.recipient,
         timestamp: (state.clock)(),
     };
-    let store = snapshot::for_request(&state.backend, &request)
+    let snap = snapshot::for_request(&state.backend, &request)
         .await
         .map_err(unavailable)?;
-    let decision = authorize(&request, &store, &EthereumVerifier, &state.anchors);
+    let decision = authorize(&request, &snap.store, &EthereumVerifier, &state.anchors);
     match &decision {
         mandate_core::AuthorizationDecision::Allow(e) => info!(
             subject = %request.subject, action = %request.action, resource = %request.resource,
@@ -196,10 +209,10 @@ async fn delegate<B: Backend>(
         ));
     }
     let now = (state.clock)();
-    let (parent, store) = load(&state, &parent_id).await?;
+    let (parent, snap) = load(&state, &parent_id).await?;
     if let Err(d) = verify_chain(
         parent.clone(),
-        &store,
+        &snap.store,
         &EthereumVerifier,
         &state.anchors,
         now,
@@ -283,29 +296,33 @@ async fn revoke<B: Backend>(
 
 async fn get_mandate<B: Backend>(State(state): Shared<B>, Path(id): Path<String>) -> ApiResult {
     let id = parse_id(&id)?;
-    let (mandate, store) = load(&state, &id).await?;
+    let (mandate, snap) = load(&state, &id).await?;
     let status = verify_chain(
         mandate.clone(),
-        &store,
+        &snap.store,
         &EthereumVerifier,
         &state.anchors,
         (state.clock)(),
     );
     Ok((
         StatusCode::OK,
-        Json(mandate_status_json(&mandate, status.as_ref().map(|_| ()))),
+        Json(mandate_status_json(
+            &mandate,
+            status.as_ref().map(|_| ()),
+            snap.mandates.get(&mandate.id),
+        )),
     ))
 }
 
 async fn get_chain<B: Backend>(State(state): Shared<B>, Path(id): Path<String>) -> ApiResult {
     let id = parse_id(&id)?;
-    let (mandate, store) = load(&state, &id).await?;
+    let (mandate, snap) = load(&state, &id).await?;
     // Every link we can resolve, root first, whether or not it is valid.
     let mut links = vec![mandate.clone()];
     while let Some(parent) = links
         .last()
         .and_then(|m| m.parent.as_ref())
-        .and_then(|p| find_mandate(&store, &EthereumVerifier, p))
+        .and_then(|p| find_mandate(&snap.store, &EthereumVerifier, p))
     {
         if links.len() > mandate_core::authorization::MAX_CHAIN_DEPTH {
             break;
@@ -315,15 +332,27 @@ async fn get_chain<B: Backend>(State(state): Shared<B>, Path(id): Path<String>) 
     links.reverse();
     let status = verify_chain(
         mandate,
-        &store,
+        &snap.store,
         &EthereumVerifier,
         &state.anchors,
         (state.clock)(),
     );
+    // Where each link lives on Arkiv, and its `$creator`.
+    let arkiv: serde_json::Map<String, Value> = links
+        .iter()
+        .filter_map(|m| Some((m.id.0.clone(), json!(snap.mandates.get(&m.id)?))))
+        .collect();
+    let revocations: Vec<Value> = links
+        .iter()
+        .filter_map(|m| find_valid_revocation(m, &snap.store, &EthereumVerifier))
+        .map(|r| json!({ "revocation": r, "arkiv": snap.revocations.get(&r.id) }))
+        .collect();
     let mut body = json!({
         "mandateId": id,
         "valid": status.is_ok(),
         "links": links,
+        "arkiv": arkiv,
+        "revocations": revocations,
     });
     if let Value::Object(map) = &mut body {
         match &status {
@@ -343,9 +372,17 @@ async fn get_chain<B: Backend>(State(state): Shared<B>, Path(id): Path<String>) 
     Ok((StatusCode::OK, Json(body)))
 }
 
+#[derive(serde::Deserialize)]
+struct AgentQuery {
+    /// Only mandates whose signed expiry is still in the future.
+    #[serde(default)]
+    active: bool,
+}
+
 async fn agent_mandates<B: Backend>(
     State(state): Shared<B>,
     Path(agent): Path<String>,
+    Query(q): Query<AgentQuery>,
 ) -> ApiResult {
     let agent = mandate_crypto::parse_address(&agent).map_err(|_| {
         ApiError::new(
@@ -354,22 +391,31 @@ async fn agent_mandates<B: Backend>(
             "agent must be an address",
         )
     })?;
+    let now = (state.clock)();
     let leaves = state
         .backend
-        .mandates_for_subject(&agent, None, None)
+        .mandates_for_subject(&agent, None, None, q.active.then_some(now))
         .await
         .map_err(unavailable)?;
-    let store = snapshot::for_leaves(&state.backend, leaves.clone())
+    let snap = snapshot::for_leaves(&state.backend, leaves.clone())
         .await
         .map_err(unavailable)?;
-    let now = (state.clock)();
     let mut seen = std::collections::BTreeSet::new();
     let mandates: Vec<Value> = leaves
         .into_iter()
+        .map(|s| s.doc)
+        // Only issuer-published copies made it into the snapshot.
+        .filter(|m| snap.mandates.contains_key(&m.id))
         .filter(|m| m.subject == agent && seen.insert((m.id.clone(), m.signature.clone())))
         .map(|m| {
-            let status = verify_chain(m.clone(), &store, &EthereumVerifier, &state.anchors, now);
-            mandate_status_json(&m, status.as_ref().map(|_| ()))
+            let status = verify_chain(
+                m.clone(),
+                &snap.store,
+                &EthereumVerifier,
+                &state.anchors,
+                now,
+            );
+            mandate_status_json(&m, status.as_ref().map(|_| ()), snap.mandates.get(&m.id))
         })
         .collect();
     Ok((

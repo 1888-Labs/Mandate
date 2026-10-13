@@ -8,10 +8,10 @@
 import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net"
 
 import { createPublicClient, createWalletClient } from "@arkiv-network/sdk"
-import { addr, bytes32, str } from "@arkiv-network/sdk/attr"
+import { addr, bytes32, str, u64 } from "@arkiv-network/sdk/attr"
 import { tiramisu } from "@arkiv-network/sdk/chains"
 import { predictEntityKey, randomSalt } from "@arkiv-network/sdk/entity"
-import { and, eq, type Expression, or } from "@arkiv-network/sdk/query"
+import { and, eq, type Expression, gt, or } from "@arkiv-network/sdk/query"
 import { ExpirationTime } from "@arkiv-network/sdk/utils"
 import { type Hex, http, stringToBytes } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
@@ -73,15 +73,40 @@ const failFastOn429: typeof fetch = async (input, init) => {
   throw new ArkivRateLimited(message, Number.isFinite(retryAfter) ? retryAfter : null)
 }
 
-export type StoredDocument = { entityKey: Hex; owner: Hex; raw: string; depth: number | null }
+export type StoredDocument = {
+  entityKey: Hex
+  owner: Hex
+  /** `$creator`: the wallet that created the entity. Immutable. */
+  creator: Hex
+  raw: string
+  depth: number | null
+}
 
 export type Config = {
   projectId: string
   rpcUrl?: string | undefined
   /** Arkiv access key (hub.arkiv.network/api-keys), sent as `X-API-KEY`. */
   apiKey?: string | undefined
+  /** Funder wallet: tops up issuer wallets with gas. Never an entity creator. */
   privateKey?: Hex | undefined
+  /**
+   * Keys of the principals this adapter may publish as. A mandate or
+   * revocation is created by its *issuer's* wallet, so `$creator` equals
+   * the issuer.
+   */
+  issuerKeys?: Hex[] | undefined
 }
+
+/** A lookup matched more entities than we read: refuse rather than truncate. */
+export class TooManyResults extends Error {}
+
+/** The adapter does not hold the key of the issuer it was asked to publish as. */
+export class IssuerKeyUnavailable extends Error {}
+
+/** Top up an issuer wallet when it falls below this (in wei)… */
+const MIN_ISSUER_BALANCE = 2_000_000_000_000_000n // 0.002 GLM ≈ 13 writes
+/** …with this much. */
+const ISSUER_TOP_UP = 10_000_000_000_000_000n // 0.01 GLM ≈ 65 writes
 
 // Node gives each resolved address only 250 ms to connect before giving up
 // on it. On a slow link that fails most RPC calls (measured: 16 of 25 with
@@ -96,21 +121,45 @@ export function connect(config: Config) {
     fetchOptions: config.apiKey ? { headers: { "X-API-KEY": config.apiKey } } : {},
   })
   const publicClient = createPublicClient({ chain: tiramisu, transport })
-  const account = config.privateKey ? privateKeyToAccount(config.privateKey) : undefined
-  const walletClient = account
-    ? createWalletClient({ chain: tiramisu, transport, account })
+  const funderAccount = config.privateKey ? privateKeyToAccount(config.privateKey) : undefined
+  const funder = funderAccount
+    ? createWalletClient({ chain: tiramisu, transport, account: funderAccount })
     : undefined
+  const issuers = new Map(
+    (config.issuerKeys ?? []).map((key) => {
+      const account = privateKeyToAccount(key)
+      const client = createWalletClient({ chain: tiramisu, transport, account })
+      return [account.address.toLowerCase(), { account, client }] as const
+    }),
+  )
   const ns = [eq("project_id", str(config.projectId))]
 
-  function wallet() {
-    if (!walletClient || !account) throw new Error("no ARKIV_PRIVATE_KEY: adapter is read-only")
-    return { walletClient, account }
+  /** The wallet of `issuer`, funded with enough gas for a write. */
+  async function issuerWallet(issuer: Hex) {
+    const wallet = issuers.get(issuer.toLowerCase())
+    if (!wallet) {
+      throw new IssuerKeyUnavailable(
+        `this adapter cannot publish as ${issuer}: entities are created by their issuer's own wallet`,
+      )
+    }
+    const balance = await publicClient.getBalance({ address: wallet.account.address })
+    if (balance < MIN_ISSUER_BALANCE) {
+      if (!funder) throw new Error(`issuer ${issuer} has no gas and no funder is configured`)
+      const hash = await funder.sendTransaction({
+        to: wallet.account.address,
+        value: ISSUER_TOP_UP,
+      })
+      await publicClient.waitForTransactionReceipt({ hash })
+    }
+    return wallet
   }
 
   /**
    * Every entity matching `filters` within our namespace, as raw JSON
-   * documents. Attributes are fetched only when `withDepth` is set: every
-   * selected field counts against the RPC's query budget.
+   * documents with their `$creator`. Attributes are fetched only when
+   * `withDepth` is set: every selected field counts against the RPC's query
+   * budget. Fails closed with `TooManyResults` rather than silently
+   * dropping matches past the cap.
    */
   async function find(
     entityType: string,
@@ -119,85 +168,127 @@ export function connect(config: Config) {
   ): Promise<StoredDocument[]> {
     const where = and(...ns, eq("entity_type", str(entityType)), ...filters)
     const out: StoredDocument[] = []
-    const keep = (key: Hex, owner: Hex, text: () => string, depth: number | null) => {
+    let seen = 0
+    const keep = (key: Hex, owner: Hex, creator: Hex, text: () => string, depth: number | null) => {
+      if (++seen > MAX_RESULTS) {
+        throw new TooManyResults(`more than ${MAX_RESULTS} ${entityType} entities match`)
+      }
       try {
         const raw = text()
         JSON.parse(raw) // skip junk others wrote into our namespace; keep the raw text
-        out.push({ entityKey: key, owner, raw, depth })
+        out.push({ entityKey: key, owner, creator, raw, depth })
       } catch {}
     }
     if (withDepth) {
       const query = publicClient
-        .select({ key: true, owner: true, payload: true, attributes: true })
+        .select({ key: true, owner: true, creator: true, payload: true, attributes: true })
         .where(where)
         .limit(200)
       for await (const e of query) {
-        if (out.length >= MAX_RESULTS) break
         const d = e.attributes.depth
-        keep(e.key, e.owner, () => e.toText(), d?.type === "i32" ? d.value : null)
+        keep(e.key, e.owner, e.creator, () => e.toText(), d?.type === "i32" ? d.value : null)
       }
     } else {
-      const query = publicClient.select({ key: true, owner: true, payload: true }).where(where).limit(200)
+      const query = publicClient
+        .select({ key: true, owner: true, creator: true, payload: true })
+        .where(where)
+        .limit(200)
       for await (const e of query) {
-        if (out.length >= MAX_RESULTS) break
-        keep(e.key, e.owner, () => e.toText(), null)
+        keep(e.key, e.owner, e.creator, () => e.toText(), null)
       }
     }
     return out
   }
 
+  /**
+   * Keep only entities whose `$creator` is the document's own issuer.
+   * Anyone can write an entity claiming any issuer; only the issuer's
+   * wallet can be its creator.
+   */
+  function issuerAuthored(docs: StoredDocument[]): StoredDocument[] {
+    return docs.filter((d) => {
+      const issuer: unknown = JSON.parse(d.raw).issuer
+      return typeof issuer === "string" && issuer.toLowerCase() === d.creator.toLowerCase()
+    })
+  }
+
   /** `name = v1 OR name = v2 …` for up to MAX_IDS_PER_QUERY bytes32 values. */
   function anyOf(name: string, ids: Hex[]): Expression {
-    if (ids.length === 0 || ids.length > MAX_IDS_PER_QUERY) {
-      throw new RangeError(`between 1 and ${MAX_IDS_PER_QUERY} ids per lookup`)
-    }
+    checkBatch(ids.length)
     return or(...ids.map((id) => eq(name, bytes32(id))))
   }
 
+  function checkBatch(n: number) {
+    if (n === 0 || n > MAX_IDS_PER_QUERY) {
+      throw new RangeError(`between 1 and ${MAX_IDS_PER_QUERY} ids per lookup`)
+    }
+  }
+
   return {
-    writer: account?.address,
+    funder: funderAccount?.address,
+    issuers: [...issuers.values()].map((w) => w.account.address),
 
     async chainId() {
       return publicClient.getChainId()
     },
 
-    mandatesById(id: Hex, withDepth = false) {
-      return find("mandate", [eq("mandate_id", bytes32(id))], withDepth)
+    async mandatesById(id: Hex, withDepth = false) {
+      return issuerAuthored(await find("mandate", [eq("mandate_id", bytes32(id))], withDepth))
     },
 
-    /** Every copy of any of `ids`, in one query. */
-    mandatesByIds(ids: Hex[]) {
-      return find("mandate", [anyOf("mandate_id", ids)])
+    /** Every issuer-published copy of any of `ids`, in one query. */
+    async mandatesByIds(ids: Hex[]) {
+      return issuerAuthored(await find("mandate", [anyOf("mandate_id", ids)]))
     },
 
-    mandatesForSubject(subject: Hex, action?: string, resource?: Resource) {
+    /**
+     * An agent's mandates. With `activeAt`, only those whose signed expiry
+     * is later (a range query on the numeric `expires_at` attribute).
+     */
+    async mandatesForSubject(
+      subject: Hex,
+      action?: string,
+      resource?: Resource,
+      activeAt?: number,
+    ) {
       const filters: Expression[] = [eq("subject", addr(subject))]
       if (action !== undefined) filters.push(eq("action", str(action)))
       if (resource !== undefined) {
         filters.push(eq("resource_hash", bytes32(resourceHash(resource))))
       }
-      return find("mandate", filters)
+      if (activeAt !== undefined) filters.push(gt("expires_at", u64(BigInt(activeAt))))
+      return issuerAuthored(await find("mandate", filters))
     },
 
-    children(parentId: Hex) {
-      return find("mandate", [eq("parent_id", bytes32(parentId))])
-    },
-
-    revocationsFor(mandateId: Hex) {
-      return find("revocation", [eq("mandate_id", bytes32(mandateId))])
-    },
-
-    /** Every revocation of any of `mandateIds`, in one query. */
-    revocationsForMany(mandateIds: Hex[]) {
-      return find("revocation", [anyOf("mandate_id", mandateIds)])
+    async children(parentId: Hex) {
+      return issuerAuthored(await find("mandate", [eq("parent_id", bytes32(parentId))]))
     },
 
     /**
-     * Store a signed mandate. The entity expires with the mandate and is
-     * read-only. Storing the exact same document twice is a no-op.
+     * Revocations of each mandate *created by that mandate's issuer*:
+     * `(mandate_id = A AND $creator = issuerA) OR …`. Filtering on
+     * `$creator` inside the query means nobody else's entities can crowd a
+     * real revocation out of the results.
+     */
+    async revocationsFor(targets: { mandateId: Hex; issuer: Hex }[]) {
+      checkBatch(targets.length)
+      const docs = await find("revocation", [
+        or(
+          ...targets.map((t) =>
+            and(eq("mandate_id", bytes32(t.mandateId)), eq("$creator", addr(t.issuer))),
+          ),
+        ),
+      ])
+      return issuerAuthored(docs)
+    },
+
+    /**
+     * Store a signed mandate, created by its issuer's wallet. The entity
+     * expires with the mandate and is read-only. Re-publishing the exact same
+     * document is a no-op.
      */
     async createMandate(raw: string, m: Mandate) {
-      const { walletClient } = wallet()
+      const { client } = await issuerWallet(m.issuer)
       const existing = await this.mandatesById(m.id)
       const same = existing.find((d) => JSON.parse(d.raw).signature === m.signature)
       if (same) return { entityKey: same.entityKey, txHash: null, created: false }
@@ -213,7 +304,7 @@ export function connect(config: Config) {
         depth = parentDepth === undefined || parentDepth === null ? null : parentDepth + 1
       }
 
-      const { entityKey, txHash } = await walletClient.createEntity({
+      const { entityKey, txHash } = await client.createEntity({
         payload: stringToBytes(raw),
         contentType: "application/json",
         attributes: mandateAttributes(config.projectId, m, depth),
@@ -224,13 +315,14 @@ export function connect(config: Config) {
     },
 
     /**
-     * Store a signed revocation, kept at least until `retainUntil` (the
-     * revoked mandate's expiry), then hand it to the burn address in the
-     * same transaction so it can never be deleted.
+     * Store a signed revocation, created by the revoker's wallet and kept at
+     * least until `retainUntil` (the revoked mandate's expiry). In the same
+     * transaction it is handed to the burn address, so not even the revoker
+     * can delete it later.
      */
     async createRevocation(raw: string, r: Revocation, retainUntil: number) {
-      const { walletClient, account } = wallet()
-      const existing = await this.revocationsFor(r.mandateId)
+      const { client, account } = await issuerWallet(r.issuer)
+      const existing = await this.revocationsFor([{ mandateId: r.mandateId, issuer: r.issuer }])
       const same = existing.find((d) => JSON.parse(d.raw).id === r.id)
       if (same) return { entityKey: same.entityKey, txHash: null, created: false }
 
@@ -244,7 +336,7 @@ export function connect(config: Config) {
         salt,
         chainId: await publicClient.getChainId(),
       })
-      const { txHash, createdEntities } = await walletClient.executeBatch({
+      const { txHash, createdEntities } = await client.executeBatch({
         creates: [
           {
             payload: stringToBytes(raw),
