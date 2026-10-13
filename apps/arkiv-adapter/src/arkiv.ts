@@ -5,6 +5,8 @@
 // numbers above 2^53 (e.g. nonces) would silently lose precision in
 // JavaScript, which would break the mandate's ID and signature.
 
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net"
+
 import { createPublicClient, createWalletClient } from "@arkiv-network/sdk"
 import { addr, bytes32, str } from "@arkiv-network/sdk/attr"
 import { tiramisu } from "@arkiv-network/sdk/chains"
@@ -44,8 +46,13 @@ export type Config = {
   privateKey?: Hex | undefined
 }
 
+// Node gives each resolved address only 250 ms to connect before giving up
+// on it. On a slow link that fails most RPC calls (measured: 16 of 25 with
+// ETIMEDOUT); 2 s fixed every one. See arkiv/friction.md.
+setDefaultAutoSelectFamilyAttemptTimeout(2_000)
+
 export function connect(config: Config) {
-  const transport = http(config.rpcUrl)
+  const transport = http(config.rpcUrl, { retryCount: 3, timeout: 30_000 })
   const publicClient = createPublicClient({ chain: tiramisu, transport })
   const account = config.privateKey ? privateKeyToAccount(config.privateKey) : undefined
   const walletClient = account

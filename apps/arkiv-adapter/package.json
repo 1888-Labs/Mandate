@@ -12,7 +12,8 @@
     "start": "node --env-file-if-exists=.env src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
-    "test:arkiv": "node --env-file-if-exists=.env test/arkiv-acceptance.ts"
+    "test:arkiv": "node --env-file-if-exists=.env test/arkiv-acceptance.ts",
+    "test:arkiv-expiry": "node --env-file-if-exists=.env test/arkiv-expiry.ts"
   },
   "dependencies": {
     "@arkiv-network/sdk": "0.8.1",

@@ -34,7 +34,7 @@ Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu,
 
 **SDK/API details:** `CreationFlags = { readonly?, permissionlessExtension? }`. No flag covers deletion.
 
-**Workaround:** create the revocation and, in the same `executeBatch`, transfer it to the burn address `0x…dEaD`. The new entity's key is computed beforehand with `getEntityNonce` + `predictEntityKey` and the same `salt`. The adapter checks that the key it predicted matches `createdEntities[0]`. *Whether the burn owner really prevents deletion is checked on-chain by `npm run test:arkiv` (pending a funded wallet).*
+**Workaround:** create the revocation and, in the same `executeBatch`, transfer it to the burn address `0x…dEaD`. The new entity's key is computed beforehand with `getEntityNonce` + `predictEntityKey` and the same `salt`. The adapter checks that the key it predicted matches `createdEntities[0]`. **Verified on Tiramisu:** deleting the burn-owned revocation from the adapter wallet fails with *"entity … is owned by 0x…dEaD, not 0xcE64…"*, while an entity the adapter still owns can be deleted.
 
 **Suggested improvement:** an `undeletable` (or `appendOnly`) creation flag. Failing that, a documented "renounce ownership" operation, rather than relying on a well-known burn address.
 
@@ -64,6 +64,30 @@ The npm README for 0.8.1 shows the resulting dependency as `"@arkiv-network/sdk"
 
 ---
 
+## 5. Intermittent `fetch failed` from Node on a slow link
+
+*2026-10-13*
+
+**Goal:** run a ~4-minute on-chain test that polls the RPC every 20 s.
+
+**Expected:** RPC calls succeed; `curl` to the same endpoint answered in about 1 s.
+
+**Actual:** `HttpRequestError: HTTP request failed … fetch failed` partway through, twice. The underlying causes were `connect ETIMEDOUT` (IPv4) and `ENETUNREACH` (IPv6). Measured over 25 sequential `eth_blockNumber` calls from Node 24:
+
+| Node setting | ok | failed |
+|---|---|---|
+| default | 9 | 16 (`ETIMEDOUT` ×13, `EAI_AGAIN` ×3) |
+| `--network-family-autoselection-attempt-timeout=2000` | 25 | 0 |
+| `--dns-result-order=ipv4first` | 25 | 0 |
+
+Node's "happy eyeballs" gives each address only **250 ms** to connect. On a high-latency connection the TLS endpoint often takes longer, so every address times out. This is a Node default rather than an Arkiv bug, but it hits the default `http()` transport the SDK examples use, and viem's built-in retry didn't help.
+
+**Workaround:** the adapter calls `net.setDefaultAutoSelectFamilyAttemptTimeout(2000)` at startup and configures `http(url, { retryCount: 3, timeout: 30_000 })`.
+
+**Suggested improvement:** a troubleshooting note in the SDK docs for `fetch failed` / `ETIMEDOUT` that mentions this setting would save time for anyone on mobile, satellite or far-away connections.
+
+---
+
 ## Positive notes
 
 - **`ExpirationTime.atDate(date)`** maps exactly onto a mandate's signed `expiresAt`. "Authorization expiry ≈ entity lifetime" took one line.
@@ -71,3 +95,5 @@ The npm README for 0.8.1 shows the resulting dependency as `"@arkiv-network/sdk"
 - **Typed `select()` projections**: selecting only `key/owner/payload/attributes` keeps queries small, and the compile-time narrowing caught a missing field.
 - **TypeScript source ships in the npm package.** Reading `src/` answered every question the README didn't (attribute types, flags, batch semantics) without leaving the editor.
 - **Read-only access needs no setup:** the public client queried Tiramisu on the first try (`scripts/probe.ts`).
+- **Expiry is prompt:** a 3-minute entity left live queries at most 19 s after its deadline, which is close enough that Arkiv expiry tracks authorization expiry in practice.
+- **Clear revert messages:** a forbidden delete says exactly who owns the entity, and a forbidden patch says the entity is read-only and what is still allowed. That made it easy to prove the protections work for the right reason.

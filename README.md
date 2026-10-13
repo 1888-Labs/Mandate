@@ -11,7 +11,7 @@ Mandates and revocations are stored as public, queryable, time-scoped records on
 > [!NOTE]
 > **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
 > Working and tested: the protocol core (signed mandates, delegation, revocation, the authorization engine) and a CLI that runs the full demo locally.
-> The HTTP API and Arkiv integration are **not built yet**: the CLI currently keeps state in a local file. See [Roadmap](#roadmap).
+> The Arkiv adapter works on Tiramisu (publish and query mandates and revocations; revocations are undeletable). **Not built yet:** wiring the CLI and the Rust HTTP API to it, so the CLI still keeps state in a local file. See [Roadmap](#roadmap).
 
 ---
 
@@ -388,6 +388,7 @@ Mandate v0.1 is designed to reject each of the following. ✅ means it's impleme
 | Ancestor revoked | Full-chain check on every request | ✅ |
 | Forged or replayed revocation | Must target the exact mandate, be signed by its issuer, and use the revocation domain separator | ✅ |
 | Forged copy of a real mandate published to break a chain | Store returns every copy; the engine uses the one that verifies | ✅ |
+| Operator deletes a revocation to revive a mandate | Revocation entities are handed to a burn address in the creating transaction | ✅ (verified on Tiramisu) |
 
 ## Threat model
 
@@ -448,11 +449,11 @@ Mandate v0.1 does not implement the paper's group grammars or negative clauses. 
 - [x] **M6** Revocation and ancestor revocation
 - [x] **M7** In-memory store and the full demo flow without Arkiv
 - [x] **M8** CLI
-- [ ] **M9** Arkiv adapter (TypeScript, Tiramisu testnet)
+- [x] **M9** Arkiv adapter (TypeScript, Tiramisu testnet), [`arkiv/schema.md`](arkiv/schema.md), [`arkiv/friction.md`](arkiv/friction.md)
 - [ ] **M10** Rust HTTP server
 - [ ] **M11** Demo agent: a prompt-injected agent blocked by Mandate
 - [ ] **M12** Web UI
-- [ ] Public deployment, `arkiv/schema.md`, `arkiv/friction.md`, demo video
+- [ ] Public deployment, demo video
 
 Out of scope for v0.1: tokens, NFTs, DAOs, a custom policy language, DIDs, custom chains, ZK proofs, multisig, production money movement.
 
@@ -464,13 +465,18 @@ mandate/
 │   ├── mandate-core/     protocol types, IDs, delegation, revocation, authorization engine (no crypto, no I/O)
 │   ├── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification of mandates and revocations
 │   └── mandate-cli/      the `mandate` command
+├── apps/
+│   └── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents)
+├── arkiv/
+│   ├── schema.md         entities, attributes, queries, what stays off Arkiv
+│   └── friction.md       real Arkiv development friction
 ├── docs/
 │   └── decisions.md      every design decision and deviation from the spec
 ├── AGENTS.md             rules for coding agents working on this repo
 └── BUILD_SPEC.md         full v0.1 specification
 ```
 
-Planned: `crates/mandate-server`, `apps/arkiv-adapter`, `apps/web`, `examples/finance-agent`, `arkiv/`.
+Planned: `crates/mandate-server`, `apps/web`, `examples/finance-agent`.
 
 ## Development
 

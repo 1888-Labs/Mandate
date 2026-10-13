@@ -51,9 +51,9 @@ One entity per signed mandate.
 
 The adapter never parses and re-serializes a payload. `nonce` is a u64 above 2⁵³, so a JavaScript round trip would change it, and that would break the ID and signature (see [friction](friction.md#1-u64-values-in-json-payloads-lose-precision-in-javascript)).
 
-**Creation flags:** `readonly: true`. The content can never be patched.
+**Creation flags:** `readonly: true`. The content can never be patched. Verified: a patch attempt is rejected with *"was created readonly, so its contents can never change"*.
 
-**Expiration:** `ExpirationTime.atDate(expiresAt)`. The entity disappears from live queries when the mandate expires. The engine still enforces the signed `expiresAt` itself and never relies on Arkiv expiry for correctness.
+**Expiration:** `ExpirationTime.atDate(expiresAt)`. The entity disappears from live queries when the mandate expires. **Verified on Tiramisu** (`npm run test:arkiv-expiry`): a 3-minute mandate was still found 1 s before its signed expiry and gone 19 s after (expiry is block-based). The engine still enforces the signed `expiresAt` itself and never relies on Arkiv expiry for correctness.
 
 **Owner:** the adapter's wallet. Deleting a mandate entity can only cause a *denial* (the chain becomes `INVALID_DELEGATION` / missing parent), never a grant.
 
@@ -88,7 +88,7 @@ One entity per signed revocation.
 
 **Expiration:** until the revoked mandate's `expiresAt`, plus a one-hour margin. After that the mandate is expired anyway, and expiry alone denies it. Revoking an ancestor also covers every descendant, because a child can never outlive its parent.
 
-**Owner:** the burn address `0x000000000000000000000000000000000000dEaD`. The revocation is created and transferred **in the same transaction** (`executeBatch` with a key from `predictEntityKey`). Nobody holds that key, so nobody, including the adapter operator, can delete a revocation to bring a revoked mandate back to life. *Pending: proven on Tiramisu by the acceptance test once the adapter wallet is funded.*
+**Owner:** the burn address `0x000000000000000000000000000000000000dEaD`. The revocation is created and transferred **in the same transaction** (`executeBatch` with a key from `predictEntityKey`). Nobody holds that key, so nobody, including the adapter operator, can delete a revocation to bring a revoked mandate back to life. **Verified on Tiramisu:** the acceptance test's delete attempt from the adapter wallet is rejected with *"entity … is owned by 0x…dEaD, not 0xcE64…"*. A control entity owned by the adapter *can* be deleted, so the protection comes from the ownership transfer.
 
 ## Queries
 
@@ -128,3 +128,28 @@ Never written to Arkiv: private keys (agents' or the adapter's), seed phrases, A
 - **Postgres:** every verifier would have to trust the operator, who could rewrite grants, hide revocations, or show different consumers different answers. On Arkiv, records are public and signed, and revocations can't even be deleted by us.
 - **IPFS:** content-addressed blobs, but Mandate needs *live, typed queries* ("active mandates for subject X, action Y, resource Z"; "revocations of M1") and lifetimes that match authorization expiry. IPFS has neither.
 - **A subgraph:** a subgraph indexes data that lives somewhere else, so we would first have to invent a contract and events. On Arkiv the authorization records themselves are the first-class, queryable data.
+
+## Verification
+
+`apps/arkiv-adapter` has two on-chain checks, run against Tiramisu on 2026-10-13 with documents freshly signed by the Rust CLI:
+
+```text
+$ npm run test:arkiv
+✓ 1. create M1 → entity 0xe5272b89…f75704
+✓ 2. query M1 by ID (returned byte-for-byte)
+✓ 3. create M2 → entity 0x83b9a4c1…0d6111
+✓ 4. query M2 by subject + action + resource (and not by another resource)
+✓ 5. query children of M1
+✓ 6. create revocation of M1 → entity 0x5ea1e242…c48875
+✓ 7. query revocation of M1 (owned by the burn address)
+✓ 8. re-publishing M1 is a no-op
+✓ 9. adapter wallet cannot delete the revocation
+✓ 10. mandate entity is read-only (patch rejected)
+
+$ npm run test:arkiv-expiry
+✓ queryable before expiry
+✓ gone from live queries (19s after its signed expiry)
+```
+
+Writer (creator) address for all Mandate entities: `0xcE64d2DB165BDdc645A3701c58cF4A4490d0f2FB`.
+

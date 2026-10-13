@@ -270,3 +270,19 @@ Lookups are linear scans, which is fine at demo scale. The Milestone 7 acceptanc
 
 **Consequences**
 Milestone 9 replaces the local `state.json` store with Arkiv. Keys stay local and never go to Arkiv.
+
+---
+
+## 2026-10-13 — Arkiv adapter design
+
+**Decision**
+- **Boundary:** a TypeScript HTTP service (`apps/arkiv-adapter`) that stores and queries signed documents and never interprets them. All semantics stay in Rust.
+- **Byte-exact payloads:** the adapter stores the request body as received and returns stored text verbatim. CLI nonces exceed 2⁵³, so any JS parse-and-stringify would change them and break IDs and signatures.
+- **Revocations can't be deleted:** they are created and transferred to `0x…dEaD` in one `executeBatch`. Arkiv's `readonly` flag blocks patches but not deletion by the owner, so without this the operator could delete a revocation and revive a revoked mandate. Verified on Tiramisu.
+- **Lifetimes:** mandate entities expire at the signed `expiresAt` (`ExpirationTime.atDate`). Revocations live until the revoked mandate's expiry plus 1 h. Both are `readonly`.
+- **Deviations from the spec's attribute list:** `policy_hash` is omitted, because the spec doesn't define it and nothing queries it. Added: `version`, plus `expires_at` (u64) for time filtering. `parent_id` is omitted for root grants. `depth` comes from storage and is informational only. `version` is an attribute, not added to the payload, so the payload stays exactly the signed document.
+- **Writes** can require a bearer token (`ADAPTER_TOKEN`), since they spend the adapter wallet's gas.
+- **Acceptance tests** write to `<project_id>-acceptance`, keeping the demo namespace clean.
+
+**Consequences**
+Mandate entities are owned by the adapter wallet and can be deleted by it. That can only cause denials (a missing parent), never grants. Documented in `arkiv/schema.md`.

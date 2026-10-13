@@ -134,15 +134,16 @@ try {
     transport: http(process.env.ARKIV_RPC_URL || undefined),
     account: privateKeyToAccount(privateKey),
   })
+  // Must fail *because of ownership*, not for some unrelated reason.
   await assert.rejects(
     wallet.deleteEntity({ entityKey: createdR.json.entityKey }),
-    "the adapter wallet must not be able to delete a revocation",
+    /owned by 0x0{36}dead/i,
   )
   ok("adapter wallet cannot delete the revocation")
 
   await assert.rejects(
     wallet.patchEntity({ entityKey: created1.json.entityKey, set: { tampered: str("yes") } }),
-    "a read-only mandate entity must not be patchable",
+    /created readonly/i,
   )
   ok("mandate entity is read-only (patch rejected)")
 
