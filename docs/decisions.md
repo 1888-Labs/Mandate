@@ -286,3 +286,19 @@ Milestone 9 replaces the local `state.json` store with Arkiv. Keys stay local an
 
 **Consequences**
 Mandate entities are owned by the adapter wallet and can be deleted by it. That can only cause denials (a missing parent), never grants. Documented in `arkiv/schema.md`.
+
+---
+
+## 2026-10-13 — Rust HTTP server
+
+**Decision**
+- **No keys on the server.** Clients sign mandates and revocations themselves. The server verifies each one (signature and ID; trust anchor for roots; `verify_chain` on the parent plus `can_delegate` for delegations; issuer-only for revocations) before publishing, so invalid documents never reach Arkiv or cost gas.
+- **Decide from a snapshot.** For each request the server fetches the agent's candidate mandates, then every copy of their ancestors (one batched query per chain level), then all their revocations (one batched query). It loads them into a `MemoryMandateStore` and runs the unchanged synchronous `authorize`. The engine stays pure and identical in the CLI, the server and the tests.
+- **Fail closed.** Any backend error makes the response `503 STATE_UNAVAILABLE`; no decision is returned. Tested, including the case where mandates load but the revocation lookup fails. Missing data inside a snapshot is a denial, never an ALLOW.
+- **The server's clock only.** `/v1/authorize` rejects unknown fields, including `timestamp`, so an agent can't backdate a request past expiry.
+- **`verify_chain` in `mandate-core`.** The request-independent part of `authorize` is public, so "is this parent still usable?" (delegate endpoint, mandate status, chain view) uses exactly the engine's logic.
+- **API shape.** `/v1/authorize` takes the flat body from AGENTS.md (`amount` and `recipient` at the top level, not the `context` object from BUILD_SPEC §27). ALLOW includes `rootPrincipal`. DENY includes `reason`, `message`, `delegationPath` and per-reason evidence (`requestedAmount` / `maximumAmount`, `revokedMandateId` / `revocationId`, …).
+- **Trust anchors** come from the `TRUST_ANCHORS` environment variable (`kind:id=0xaddr[,0xaddr];…`).
+
+**Consequences**
+A decision against Arkiv takes about 0.65 s (measured live) and costs three Arkiv queries for the demo chain. The anonymous RPC budget is small, so deployments should set `ARKIV_API_KEY`.

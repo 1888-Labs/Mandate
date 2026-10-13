@@ -11,7 +11,7 @@ import { createPublicClient, createWalletClient } from "@arkiv-network/sdk"
 import { addr, bytes32, str } from "@arkiv-network/sdk/attr"
 import { tiramisu } from "@arkiv-network/sdk/chains"
 import { predictEntityKey, randomSalt } from "@arkiv-network/sdk/entity"
-import { and, eq, type Expression } from "@arkiv-network/sdk/query"
+import { and, eq, type Expression, or } from "@arkiv-network/sdk/query"
 import { ExpirationTime } from "@arkiv-network/sdk/utils"
 import { type Hex, http, stringToBytes } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
@@ -38,11 +38,48 @@ const REVOCATION_MARGIN_SECONDS = 3600
 /** Upper bound on entities returned for one lookup, against spam in our namespace. */
 const MAX_RESULTS = 1000
 
+/** Most IDs combined into one OR query. */
+export const MAX_IDS_PER_QUERY = 50
+
+/**
+ * The Arkiv RPC refused a call because a query budget is spent (HTTP 429).
+ * Raised immediately instead of letting viem sleep for `Retry-After`
+ * (observed: 609 s), which looked like a hang.
+ */
+export class ArkivRateLimited extends Error {
+  readonly retryAfter: number | null
+  constructor(message: string, retryAfter: number | null) {
+    super(message)
+    this.retryAfter = retryAfter
+  }
+}
+
+/** Find an `ArkivRateLimited` anywhere in an error's cause chain. */
+export function rateLimitOf(error: unknown): ArkivRateLimited | undefined {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if (e instanceof ArkivRateLimited) return e
+  }
+  return undefined
+}
+
+const failFastOn429: typeof fetch = async (input, init) => {
+  const res = await fetch(input, init)
+  if (res.status !== 429) return res
+  const retryAfter = Number(res.headers.get("retry-after"))
+  let message = "Arkiv RPC query budget exhausted"
+  try {
+    message = (await res.json()).message ?? message
+  } catch {}
+  throw new ArkivRateLimited(message, Number.isFinite(retryAfter) ? retryAfter : null)
+}
+
 export type StoredDocument = { entityKey: Hex; owner: Hex; raw: string; depth: number | null }
 
 export type Config = {
   projectId: string
   rpcUrl?: string | undefined
+  /** Arkiv access key (hub.arkiv.network/api-keys), sent as `X-API-KEY`. */
+  apiKey?: string | undefined
   privateKey?: Hex | undefined
 }
 
@@ -52,7 +89,12 @@ export type Config = {
 setDefaultAutoSelectFamilyAttemptTimeout(2_000)
 
 export function connect(config: Config) {
-  const transport = http(config.rpcUrl, { retryCount: 3, timeout: 30_000 })
+  const transport = http(config.rpcUrl, {
+    retryCount: 2,
+    timeout: 30_000,
+    fetchFn: failFastOn429,
+    fetchOptions: config.apiKey ? { headers: { "X-API-KEY": config.apiKey } } : {},
+  })
   const publicClient = createPublicClient({ chain: tiramisu, transport })
   const account = config.privateKey ? privateKeyToAccount(config.privateKey) : undefined
   const walletClient = account
@@ -65,31 +107,51 @@ export function connect(config: Config) {
     return { walletClient, account }
   }
 
-  /** Every entity matching `filters` within our namespace, as raw JSON documents. */
-  async function find(entityType: string, filters: Expression[]): Promise<StoredDocument[]> {
+  /**
+   * Every entity matching `filters` within our namespace, as raw JSON
+   * documents. Attributes are fetched only when `withDepth` is set: every
+   * selected field counts against the RPC's query budget.
+   */
+  async function find(
+    entityType: string,
+    filters: Expression[],
+    withDepth = false,
+  ): Promise<StoredDocument[]> {
+    const where = and(...ns, eq("entity_type", str(entityType)), ...filters)
     const out: StoredDocument[] = []
-    const query = publicClient
-      .select({ key: true, owner: true, payload: true, attributes: true })
-      .where(and(...ns, eq("entity_type", str(entityType)), ...filters))
-      .limit(200)
-    for await (const entity of query) {
-      if (out.length >= MAX_RESULTS) break
-      let raw: string
+    const keep = (key: Hex, owner: Hex, text: () => string, depth: number | null) => {
       try {
-        raw = entity.toText()
+        const raw = text()
         JSON.parse(raw) // skip junk others wrote into our namespace; keep the raw text
-      } catch {
-        continue
+        out.push({ entityKey: key, owner, raw, depth })
+      } catch {}
+    }
+    if (withDepth) {
+      const query = publicClient
+        .select({ key: true, owner: true, payload: true, attributes: true })
+        .where(where)
+        .limit(200)
+      for await (const e of query) {
+        if (out.length >= MAX_RESULTS) break
+        const d = e.attributes.depth
+        keep(e.key, e.owner, () => e.toText(), d?.type === "i32" ? d.value : null)
       }
-      const depth = entity.attributes.depth
-      out.push({
-        entityKey: entity.key,
-        owner: entity.owner,
-        raw,
-        depth: depth?.type === "i32" ? depth.value : null,
-      })
+    } else {
+      const query = publicClient.select({ key: true, owner: true, payload: true }).where(where).limit(200)
+      for await (const e of query) {
+        if (out.length >= MAX_RESULTS) break
+        keep(e.key, e.owner, () => e.toText(), null)
+      }
     }
     return out
+  }
+
+  /** `name = v1 OR name = v2 …` for up to MAX_IDS_PER_QUERY bytes32 values. */
+  function anyOf(name: string, ids: Hex[]): Expression {
+    if (ids.length === 0 || ids.length > MAX_IDS_PER_QUERY) {
+      throw new RangeError(`between 1 and ${MAX_IDS_PER_QUERY} ids per lookup`)
+    }
+    return or(...ids.map((id) => eq(name, bytes32(id))))
   }
 
   return {
@@ -99,8 +161,13 @@ export function connect(config: Config) {
       return publicClient.getChainId()
     },
 
-    mandatesById(id: Hex) {
-      return find("mandate", [eq("mandate_id", bytes32(id))])
+    mandatesById(id: Hex, withDepth = false) {
+      return find("mandate", [eq("mandate_id", bytes32(id))], withDepth)
+    },
+
+    /** Every copy of any of `ids`, in one query. */
+    mandatesByIds(ids: Hex[]) {
+      return find("mandate", [anyOf("mandate_id", ids)])
     },
 
     mandatesForSubject(subject: Hex, action?: string, resource?: Resource) {
@@ -120,6 +187,11 @@ export function connect(config: Config) {
       return find("revocation", [eq("mandate_id", bytes32(mandateId))])
     },
 
+    /** Every revocation of any of `mandateIds`, in one query. */
+    revocationsForMany(mandateIds: Hex[]) {
+      return find("revocation", [anyOf("mandate_id", mandateIds)])
+    },
+
     /**
      * Store a signed mandate. The entity expires with the mandate and is
      * read-only. Storing the exact same document twice is a no-op.
@@ -136,7 +208,7 @@ export function connect(config: Config) {
       let depth: number | null = 0
       if (m.parent) {
         // Informational only: storage is untrusted, the engine walks the real chain.
-        const parents = await this.mandatesById(m.parent)
+        const parents = await this.mandatesById(m.parent, true)
         const parentDepth = parents.map((p) => p.depth).find((d) => d !== null)
         depth = parentDepth === undefined || parentDepth === null ? null : parentDepth + 1
       }

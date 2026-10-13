@@ -88,6 +88,39 @@ Node's "happy eyeballs" gives each address only **250 ms** to connect. On a high
 
 ---
 
+## 6. Anonymous query budget runs out, and the SDK then appears to hang
+
+*2026-10-13*
+
+**Goal:** run the Mandate server against Arkiv. Each authorization decision needs a few queries (the agent's candidate mandates, their ancestors, their revocations).
+
+**Expected:** either queries succeed, or a quota error comes back promptly.
+
+**Actual:** after a day of development (acceptance tests, a 4-minute expiry poll, the end-to-end demo), every `arkiv_query` started failing:
+
+```text
+HTTP/2 429
+ratelimit: limit=10000, remaining=0, reset=609
+retry-after: 609
+{"error":"ANON_COST_LIMITED","message":"unauthenticated query budget exhausted; get an API key at https://hub.arkiv.network for a monthly quota"}
+```
+
+The server's message is excellent. But through the SDK we never saw it: viem's `http()` transport honours `Retry-After`, so each of its retries silently slept about 10 minutes. Our adapter's requests just hung (a curl to it timed out at 60 s, and a direct SDK call was still pending after 150 s). Plain `eth_chainId` kept working, which made it look like a bug in our query code. We found the cause only by sending a raw `arkiv_query` with curl.
+
+**SDK/API details:** `@arkiv-network/sdk` 0.8.1 doesn't mention API keys, quotas or rate limits anywhere in its README or source. The docs' Access Keys page (`docs.arkiv.network/start-here/access-keys/`) explains how to send a key (URL path, `X-API-KEY` header or `Authorization: Bearer`) but gives no numbers for the anonymous limit or the keyed quota.
+
+**Workaround:**
+- A custom `fetchFn` on the viem transport turns an HTTP 429 into an immediate `ArkivRateLimited` error carrying `retryAfter`. The adapter answers `503 ARKIV_RATE_LIMITED` in under a second. (Test: against a fake RPC answering `429 / Retry-After: 609`, the call fails in about 0.5 s.)
+- `ARKIV_API_KEY` support (sent as `X-API-KEY`, so the key never appears in URLs or logs).
+- Spend less: one OR query per chain level for ancestors, one OR query for all revocations, and attributes fetched only when needed.
+
+**Suggested improvement:**
+- Mention access keys and the anonymous budget in the SDK README next to `createPublicClient`, with an `apiKey` option.
+- Have the SDK surface `ANON_COST_LIMITED` / `ratelimit` as a typed error rather than leaving viem to sleep on `Retry-After`.
+- Publish the anonymous limit and how `cost units` are computed per query.
+
+---
+
 ## Positive notes
 
 - **`ExpirationTime.atDate(date)`** maps exactly onto a mandate's signed `expiresAt`. "Authorization expiry ≈ entity lifetime" took one line.

@@ -7,7 +7,13 @@ import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { test } from "node:test"
 
-import type { Arkiv, StoredDocument } from "../src/arkiv.ts"
+import {
+  type Arkiv,
+  ArkivRateLimited,
+  connect,
+  rateLimitOf,
+  type StoredDocument,
+} from "../src/arkiv.ts"
 import {
   InvalidDocument,
   mandateAttributes,
@@ -78,6 +84,9 @@ test("mandate attributes are namespaced and typed", () => {
   assert.equal(root.depth, undefined)
 })
 
+const LIMITED = `0x${"ee".repeat(32)}`
+const seenIds: string[][] = []
+
 /** A fake Arkiv that records writes and serves them back. */
 function fakeArkiv() {
   const stored: { raw: string }[] = []
@@ -91,6 +100,15 @@ function fakeArkiv() {
     writer: undefined,
     chainId: async () => 7738577,
     mandatesById: async () => stored.map((s) => doc(s.raw)),
+    mandatesByIds: async (ids: string[]) => {
+      seenIds.push(ids)
+      return stored.map((s) => doc(s.raw))
+    },
+    revocationsForMany: async (ids: string[]) => {
+      seenIds.push(ids)
+      if (ids.includes(LIMITED)) throw new Error("outer", { cause: new ArkivRateLimited("budget exhausted", 609) })
+      return []
+    },
     mandatesForSubject: async () => stored.map((s) => doc(s.raw)),
     children: async () => [],
     revocationsFor: async () => [],
@@ -168,4 +186,54 @@ test("rejects bad input with stable error codes", async () => {
       assert.equal((await res.json()).error, code, path)
     }
   })
+})
+
+test("batched lookups pass every id through in one call", async () => {
+  await withServer(undefined, async (base) => {
+    const a = `0x${"aa".repeat(32)}`
+    const b = `0x${"bb".repeat(32)}`
+    seenIds.length = 0
+    assert.equal((await fetch(`${base}/v1/mandates?id=${a}&id=${b}`)).status, 200)
+    assert.equal((await fetch(`${base}/v1/revocations?mandate=${a}&mandate=${b}`)).status, 200)
+    assert.deepEqual(seenIds, [[a, b], [a, b]])
+    const tooMany = Array.from({ length: 51 }, () => `id=${a}`).join("&")
+    assert.equal((await fetch(`${base}/v1/mandates?${tooMany}`)).status, 400)
+  })
+})
+
+test("an Arkiv rate limit becomes a fast, explicit 503", async () => {
+  await withServer(undefined, async (base) => {
+    const res = await fetch(`${base}/v1/revocations?mandate=${LIMITED}`)
+    assert.equal(res.status, 503)
+    const body = await res.json()
+    assert.equal(body.error, "ARKIV_RATE_LIMITED")
+    assert.equal(body.retryAfter, 609)
+    assert.match(body.message, /ARKIV_API_KEY/)
+  })
+})
+
+
+test("a 429 from the RPC fails fast instead of sleeping for Retry-After", async () => {
+  // A fake Arkiv RPC that is out of budget, like Tiramisu answered.
+  const rpc = createServer((_req, res) => {
+    res.writeHead(429, { "content-type": "application/json", "retry-after": "609" })
+    res.end(JSON.stringify({ error: "ANON_COST_LIMITED", message: "unauthenticated query budget exhausted" }))
+  })
+  await new Promise<void>((resolve) => rpc.listen(0, "127.0.0.1", resolve))
+  const { port } = rpc.address() as AddressInfo
+  try {
+    const arkiv = connect({ projectId: "p", rpcUrl: `http://127.0.0.1:${port}` })
+    const started = Date.now()
+    const error = await arkiv.mandatesForSubject(`0x${"ab".repeat(20)}`).then(
+      () => undefined,
+      (e: unknown) => e,
+    )
+    const limited = rateLimitOf(error)
+    assert.ok(limited, `expected ArkivRateLimited, got ${String(error)}`)
+    assert.equal(limited.retryAfter, 609)
+    assert.match(limited.message, /budget exhausted/)
+    assert.ok(Date.now() - started < 5_000, `took ${Date.now() - started} ms`)
+  } finally {
+    rpc.close()
+  }
 })

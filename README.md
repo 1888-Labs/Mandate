@@ -11,7 +11,7 @@ Mandates and revocations are stored as public, queryable, time-scoped records on
 > [!NOTE]
 > **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
 > Working and tested: the protocol core (signed mandates, delegation, revocation, the authorization engine) and a CLI that runs the full demo locally.
-> The Arkiv adapter works on Tiramisu (publish and query mandates and revocations; revocations are undeletable). **Not built yet:** wiring the CLI and the Rust HTTP API to it, so the CLI still keeps state in a local file. See [Roadmap](#roadmap).
+> The full demo runs against Arkiv Tiramisu through the Rust HTTP API (`scripts/demo-arkiv.sh`). The CLI signs locally and still keeps its own state in a local file; the demo publishes the CLI's signed documents through the API. See [Roadmap](#roadmap).
 
 ---
 
@@ -253,6 +253,52 @@ Other commands: `mandate inspect M2`, `mandate principal list` and `mandate reso
 > [!WARNING]
 > `.mandate/keys.json` holds **plaintext development private keys** (written owner-only). It's for local demos only and is git-ignored. Never use these keys for anything real.
 
+### HTTP API
+
+`mandate-server` exposes the protocol over JSON. It holds **no private keys**: clients sign mandates and revocations themselves (the CLI's `mandate export` prints them). The server verifies each one before publishing it to Arkiv through the adapter, and decides every request from a fresh snapshot of Arkiv state.
+
+```bash
+# terminal 1: the Arkiv adapter (needs apps/arkiv-adapter/.env)
+cd apps/arkiv-adapter && npm install && npm start
+# terminal 2: the API. Alice's address is the trusted owner of the treasury wallet.
+TRUST_ANCHORS="wallet:treasury-demo=0xALICE" cargo run -p mandate-server
+```
+
+Or run the whole demo against Arkiv in one go: `scripts/demo-arkiv.sh`.
+
+| Method | Path | Body / result |
+|---|---|---|
+| `POST` | `/v1/mandates` | signed **root** mandate; must be issued by a trust anchor |
+| `POST` | `/v1/mandates/{id}/delegate` | signed child of `{id}`; rejected unless it only narrows a still-valid parent |
+| `POST` | `/v1/mandates/{id}/revoke` | signed revocation of `{id}`, by its issuer |
+| `POST` | `/v1/authorize` | `{subject, action, resource, amount?, recipient?}` → ALLOW / DENY |
+| `GET` | `/v1/mandates/{id}` | the mandate and its status (`ACTIVE` or a deny code) |
+| `GET` | `/v1/mandates/{id}/chain` | every link from the root, `valid`, and why not |
+| `GET` | `/v1/agents/{address}/mandates` | an agent's mandates with their status |
+
+```bash
+curl -s localhost:8080/v1/authorize -H 'content-type: application/json' -d '{
+  "subject": "0x81b8…64c1", "action": "transfer",
+  "resource": {"kind": "wallet", "id": "treasury-demo"},
+  "amount": 700, "recipient": "AWS" }'
+```
+
+```json
+{
+  "decision": "DENY",
+  "reason": "AMOUNT_EXCEEDED",
+  "message": "Requested 700 exceeds the delegated maximum of 300.",
+  "requestedAmount": 700,
+  "maximumAmount": 300,
+  "mandateId": "0xeafa…134c",
+  "delegationPath": ["0x5e16…1ae8", "0x99d6…04b4", "0x81b8…64c1"]
+}
+```
+
+An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `effectiveConstraints`. Every denial has a stable `reason` code plus its evidence (`revokedMandateId` and `revocationId`, `expiredMandateId`, `allowedRecipients`, …). Some things are deliberate:
+- **The server's clock decides expiry.** A client-sent `timestamp` is rejected, so agents can't backdate requests.
+- **Unreachable state fails closed.** If Arkiv state can't be read, the answer is `503 STATE_UNAVAILABLE`, never a decision.
+
 ### As a library
 
 The same flow is available from Rust. This example is compiled and run as a test ([`readme_flow.rs`](crates/mandate-crypto/tests/readme_flow.rs)):
@@ -327,7 +373,6 @@ assert_eq!(
 );
 ```
 
-The HTTP API is [planned](#roadmap).
 
 ## Protocol reference
 
@@ -450,7 +495,7 @@ Mandate v0.1 does not implement the paper's group grammars or negative clauses. 
 - [x] **M7** In-memory store and the full demo flow without Arkiv
 - [x] **M8** CLI
 - [x] **M9** Arkiv adapter (TypeScript, Tiramisu testnet), [`arkiv/schema.md`](arkiv/schema.md), [`arkiv/friction.md`](arkiv/friction.md)
-- [ ] **M10** Rust HTTP server
+- [x] **M10** Rust HTTP server, backed by Arkiv
 - [ ] **M11** Demo agent: a prompt-injected agent blocked by Mandate
 - [ ] **M12** Web UI
 - [ ] Public deployment, demo video
@@ -464,7 +509,8 @@ mandate/
 ├── crates/
 │   ├── mandate-core/     protocol types, IDs, delegation, revocation, authorization engine (no crypto, no I/O)
 │   ├── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification of mandates and revocations
-│   └── mandate-cli/      the `mandate` command
+│   ├── mandate-cli/      the `mandate` command
+│   └── mandate-server/   HTTP API; decides each request from a fresh Arkiv snapshot
 ├── apps/
 │   └── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents)
 ├── arkiv/
@@ -472,11 +518,13 @@ mandate/
 │   └── friction.md       real Arkiv development friction
 ├── docs/
 │   └── decisions.md      every design decision and deviation from the spec
+├── scripts/
+│   └── demo-arkiv.sh     the full demo against Arkiv Tiramisu
 ├── AGENTS.md             rules for coding agents working on this repo
 └── BUILD_SPEC.md         full v0.1 specification
 ```
 
-Planned: `crates/mandate-server`, `apps/web`, `examples/finance-agent`.
+Planned: `apps/web`, `examples/finance-agent`.
 
 ## Development
 

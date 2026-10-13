@@ -245,14 +245,44 @@ where
     }))
 }
 
-/// Check one candidate mandate and its whole chain against the request.
-fn evaluate<S, V>(
-    request: &AuthorizationRequest,
+/// A chain that passed every check that doesn't depend on a request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedChain {
+    /// Root first, leaf last.
+    pub chain: Vec<Mandate>,
+    /// The tightest limits along the chain.
+    pub effective_constraints: Constraints,
+}
+
+impl VerifiedChain {
+    pub fn root(&self) -> Option<&Mandate> {
+        self.chain.first()
+    }
+
+    pub fn leaf(&self) -> Option<&Mandate> {
+        self.chain.last()
+    }
+
+    /// Root principal, then every subject down to the leaf's subject.
+    pub fn delegation_path(&self) -> Vec<PrincipalId> {
+        delegation_path(&self.chain)
+    }
+}
+
+/// Check that `leaf` currently grants authority at all, at `timestamp`:
+/// every mandate in its chain is validly signed, every link is a valid
+/// delegation, the root was issued by a trusted owner, and nothing in the
+/// chain has expired or been revoked.
+///
+/// This is everything `authorize` checks except matching a specific
+/// request's action, resource, amount and recipient.
+pub fn verify_chain<S, V>(
     leaf: Mandate,
     store: &S,
     verifier: &V,
     anchors: &TrustAnchors,
-) -> Result<AuthorizationEvidence, Denial>
+    timestamp: u64,
+) -> Result<VerifiedChain, Denial>
 where
     S: MandateStore,
     V: SignatureVerifier,
@@ -263,13 +293,6 @@ where
         mandate_id: Some(leaf_id.clone()),
         delegation_path: delegation_path(chain_root_first),
     };
-
-    if leaf.action != request.action {
-        return Err(deny(DenyReason::ActionNotAllowed, &[leaf]));
-    }
-    if leaf.resource != request.resource {
-        return Err(deny(DenyReason::ResourceNotAllowed, &[leaf]));
-    }
 
     // Resolve leaf → root, verifying every mandate as it is fetched.
     let mut chain: Vec<Mandate> = Vec::new();
@@ -335,7 +358,7 @@ where
         return Err(deny(reason, &chain));
     }
 
-    if let Some(expired) = chain.iter().find(|m| request.timestamp >= m.expires_at) {
+    if let Some(expired) = chain.iter().find(|m| timestamp >= m.expires_at) {
         let reason = DenyReason::Expired {
             mandate_id: expired.id.clone(),
             expires_at: expired.expires_at,
@@ -362,7 +385,45 @@ where
         return Err(deny(reason, &chain));
     }
 
-    let effective = effective_constraints(&chain);
+    let effective_constraints = effective_constraints(&chain);
+    Ok(VerifiedChain {
+        chain,
+        effective_constraints,
+    })
+}
+
+/// Check one candidate mandate and its whole chain against the request.
+fn evaluate<S, V>(
+    request: &AuthorizationRequest,
+    leaf: Mandate,
+    store: &S,
+    verifier: &V,
+    anchors: &TrustAnchors,
+) -> Result<AuthorizationEvidence, Denial>
+where
+    S: MandateStore,
+    V: SignatureVerifier,
+{
+    let leaf_id = leaf.id.clone();
+    let deny = |reason: DenyReason, chain_root_first: &[Mandate]| Denial {
+        reason,
+        mandate_id: Some(leaf_id.clone()),
+        delegation_path: delegation_path(chain_root_first),
+    };
+
+    if leaf.action != request.action {
+        return Err(deny(DenyReason::ActionNotAllowed, &[leaf]));
+    }
+    if leaf.resource != request.resource {
+        return Err(deny(DenyReason::ResourceNotAllowed, &[leaf]));
+    }
+
+    let verified = verify_chain(leaf, store, verifier, anchors, request.timestamp)?;
+    let chain = &verified.chain;
+    let effective = verified.effective_constraints.clone();
+    let Some(root) = verified.root() else {
+        return Err(deny(DenyReason::NoMandate, chain));
+    };
 
     if let Some(maximum) = effective.max_amount {
         if request.amount.is_none_or(|a| a > maximum) {
@@ -370,7 +431,7 @@ where
                 requested: request.amount,
                 maximum,
             };
-            return Err(deny(reason, &chain));
+            return Err(deny(reason, chain));
         }
     }
 
@@ -384,14 +445,14 @@ where
                 requested: request.recipient.clone(),
                 allowed: allowed.clone(),
             };
-            return Err(deny(reason, &chain));
+            return Err(deny(reason, chain));
         }
     }
 
     Ok(AuthorizationEvidence {
         mandate_id: leaf_id,
         root_principal: root.issuer.clone(),
-        delegation_path: delegation_path(&chain),
+        delegation_path: delegation_path(chain),
         chain: chain.iter().map(|m| m.id.clone()).collect(),
         effective_constraints: effective,
     })
@@ -1410,5 +1471,28 @@ mod tests {
         let d = denial(authorize(&req, &store, &FakeVerifier, &anchors()));
         assert_eq!(d.reason.code(), "ANCESTOR_REVOKED");
         assert_eq!(d.mandate_id, Some(m2.id));
+    }
+    // --- verify_chain ---
+
+    #[test]
+    fn verify_chain_returns_root_first_chain_and_limits() {
+        let (store, m1, m2) = demo();
+        let v = verify_chain(m2.clone(), &store, &FakeVerifier, &anchors(), NOW + HOUR).unwrap();
+        assert_eq!(v.chain, vec![m1, m2]);
+        assert_eq!(v.delegation_path(), vec![alice(), finance(), invoice()]);
+        assert_eq!(v.effective_constraints.max_amount, Some(300));
+    }
+
+    #[test]
+    fn verify_chain_applies_every_request_independent_check() {
+        let (mut store, m1, m2) = demo();
+        let at = |t| verify_chain(m2.clone(), &store, &FakeVerifier, &anchors(), t);
+        assert_eq!(at(m2.expires_at).unwrap_err().reason.code(), "EXPIRED");
+        store.1.push(revoke(&m1, alice()));
+        let d =
+            verify_chain(m2.clone(), &store, &FakeVerifier, &anchors(), NOW + HOUR).unwrap_err();
+        assert_eq!(d.reason.code(), "ANCESTOR_REVOKED");
+        let untrusted = verify_chain(m2, &store, &FakeVerifier, &TrustAnchors::new(), NOW + HOUR);
+        assert_eq!(untrusted.unwrap_err().reason.code(), "UNTRUSTED_ROOT");
     }
 }
