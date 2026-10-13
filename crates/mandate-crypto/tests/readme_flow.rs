@@ -1,4 +1,4 @@
-//! The delegation example from README.md. Keep the two in sync.
+//! The delegation example from docs/library.md. Keep the two in sync.
 
 use std::error::Error;
 
