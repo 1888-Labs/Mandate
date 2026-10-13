@@ -121,7 +121,7 @@ publicClient
   .limit(200)
 ```
 
-All lookups return **every** match. The engine needs this: a revocation lookup that returned only one result could be shadowed by a forgery, and so could a mandate-by-ID lookup ([decisions](../docs/decisions.md)).
+All lookups return **every** match. The engine needs this: a revocation lookup that returned only one result could be shadowed by a forgery, and so could a mandate-by-ID lookup.
 
 ## What stays off Arkiv
 

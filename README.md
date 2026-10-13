@@ -518,8 +518,6 @@ mandate/
 ├── arkiv/
 │   ├── schema.md         entities, attributes, queries, what stays off Arkiv
 │   └── friction.md       real Arkiv development friction
-├── docs/
-│   └── decisions.md      every design decision and deviation from the spec
 ├── examples/
 │   └── finance-agent/    a prompt-injected agent whose payments Mandate stops
 ├── scripts/
@@ -538,7 +536,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-All three must pass before any change to authorization logic is merged. Every protocol rule has a test, and tests are never deleted to make CI pass. Design decisions are recorded in [`docs/decisions.md`](docs/decisions.md).
+All three must pass before any change to authorization logic is merged. Every protocol rule has a test, and tests are never deleted to make CI pass.
 
 ## Hackathon disclosure
 
