@@ -189,3 +189,42 @@ The API maps `Denial` to the spec's JSON shape (`reason`, `requestedAmount`, `ma
 
 **Consequences**
 Tests cover each rule. A mutation check confirmed the suite fails if signature checking, `can_delegate`, the trust-anchor check or the expiry boundary is removed or weakened. `amount_above_effective_limit_is_denied` (BUILD_SPEC §34) is implemented as `amount_above_limit_is_denied`.
+
+---
+
+## 2026-10-13 — Revocation semantics
+
+**Decision**
+- **Format:** `Revocation` is a separate signed document with its own `RevocationId` newtype (BUILD_SPEC §14). The ID is `keccak256` of a canonical encoding with its own domain separator, `mandate-revocation/0.1`. The issuer signs it with EIP-191 like a mandate. Because the domain separators differ, a mandate signature can never be passed off as a revocation signature, or the reverse (tested).
+- **Who may revoke:** only the mandate's own issuer, as the spec says for v0.1. Upstream principals cut off a descendant by revoking their *own* mandate, and that invalidates everything beneath it.
+- **When it applies:** a valid revocation applies as soon as the engine can see it, whatever its `revoked_at`. `revoked_at` is informational, for audit. Reason: if `revoked_at` were enforced as "effective from", clock skew between the revoker and the server could leave a just-revoked mandate usable.
+- **Engine order:** revocation is checked after expiry and before constraints, over every mandate in the chain, top first. A revoked leaf gives `REVOKED`. A revoked ancestor gives `ANCESTOR_REVOKED`, naming the *highest* revoked mandate. Both carry the `revocation_id`, so the record can be looked up independently.
+- **What counts:** a revocation counts only if it targets this mandate's ID, its issuer is that mandate's issuer, and its ID and signature verify. Everything else the store returns is ignored.
+
+**Consequences**
+Revocation is permanent in v0.1. There is no un-revoke; the issuer grants a new mandate instead.
+
+---
+
+## 2026-10-13 — `MandateStore::find_revocations` returns all revocations (security)
+
+**Decision**
+The spec's trait has `find_revocation(&MandateId) -> Option<Revocation>`. Mandate uses `find_revocations(&MandateId) -> Vec<Revocation>`, and the engine checks every result.
+
+**Reason**
+Storage is untrusted, and anyone can publish a record that *claims* to revoke a mandate. With a single `Option`, an attacker who wants a revoked mandate to keep working could publish a forged revocation. If the store returned the forgery instead of the real one, the engine would discard it and treat the mandate as live. Returning all candidates means a forgery can't hide a real revocation (`forged_revocation_cannot_hide_real_one`).
+
+**Consequences**
+The Arkiv adapter (Milestone 9) must return every matching revocation entity, not just the first.
+
+---
+
+## 2026-10-13 — Revocation test names
+
+The specs use several names for the same revocation tests. Each is implemented once:
+
+| Implemented as | Also named in the specs |
+|---|---|
+| `directly_revoked_mandate_is_denied` | `direct_revocation_is_respected` (AGENTS test list), `directly_revoked_mandate_is_rejected` (BUILD_SPEC §34) |
+| `revoked_parent_invalidates_child` | `parent_revocation_invalidates_child` (AGENTS test list) |
+| `revoked_grandparent_invalidates_descendant` | `grandparent_revocation_invalidates_descendant` (AGENTS test list) |

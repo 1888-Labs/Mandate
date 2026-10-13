@@ -7,6 +7,7 @@
 use crate::capability::ResourceId;
 use crate::mandate::{Mandate, MandateId};
 use crate::principal::PrincipalId;
+use crate::revocation::Revocation;
 
 /// Read access to shared authorization state.
 pub trait MandateStore {
@@ -18,12 +19,20 @@ pub trait MandateStore {
         action: &str,
         resource: &ResourceId,
     ) -> Vec<Mandate>;
+
+    /// Every revocation that claims to target `mandate_id`.
+    ///
+    /// Returns all of them, not just one: storage is untrusted, and a
+    /// forged revocation must never be able to hide a real one.
+    fn find_revocations(&self, mandate_id: &MandateId) -> Vec<Revocation>;
 }
 
-/// Checks that a mandate's ID matches its content and that it carries a
-/// valid signature by its issuer.
+/// Checks that a document's ID matches its content and that it carries a
+/// valid signature by its stated issuer.
 ///
 /// `mandate-crypto` provides the real implementation.
 pub trait SignatureVerifier {
     fn verify_mandate(&self, mandate: &Mandate) -> bool;
+
+    fn verify_revocation(&self, revocation: &Revocation) -> bool;
 }

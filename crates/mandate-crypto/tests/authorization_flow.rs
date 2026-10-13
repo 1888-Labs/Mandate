@@ -1,13 +1,16 @@
-//! Demo steps 1–5 from BUILD_SPEC.md with real secp256k1 signatures.
-//! (Revocation, steps 6–7, arrives with Milestone 6.)
+//! The full demo flow (BUILD_SPEC.md §29, steps 1–7) with real secp256k1
+//! signatures, in memory.
 
 use mandate_core::{
     authorize, AuthorizationDecision, AuthorizationRequest, Constraints, Mandate, MandateId,
-    MandateStore, PrincipalId, ResourceId, TrustAnchors, UnsignedMandate,
+    MandateStore, PrincipalId, ResourceId, Revocation, TrustAnchors, UnsignedMandate,
+    UnsignedRevocation,
 };
-use mandate_crypto::{address_of, generate_signing_key, sign_mandate, EthereumVerifier};
+use mandate_crypto::{
+    address_of, generate_signing_key, sign_mandate, sign_revocation, EthereumVerifier,
+};
 
-struct VecStore(Vec<Mandate>);
+struct VecStore(Vec<Mandate>, Vec<Revocation>);
 
 impl MandateStore for VecStore {
     fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
@@ -18,6 +21,14 @@ impl MandateStore for VecStore {
         self.0
             .iter()
             .filter(|m| &m.subject == s && m.action == a && &m.resource == r)
+            .cloned()
+            .collect()
+    }
+
+    fn find_revocations(&self, id: &MandateId) -> Vec<Revocation> {
+        self.1
+            .iter()
+            .filter(|r| &r.mandate_id == id)
             .cloned()
             .collect()
     }
@@ -89,9 +100,9 @@ fn demo_flow_with_real_signatures() {
     .signature;
     let forged = forged.into_mandate(forged_sig);
 
-    let store = VecStore(vec![m1, m2.clone(), forged]);
+    let mut store = VecStore(vec![m1.clone(), m2.clone(), forged], vec![]);
     let anchors = TrustAnchors::new().trust(treasury.clone(), address_of(&alice));
-    let ask = |amount: u64, recipient: &str| {
+    let ask = |store: &VecStore, amount: u64, recipient: &str| {
         authorize(
             &AuthorizationRequest {
                 subject: address_of(&invoice),
@@ -101,14 +112,14 @@ fn demo_flow_with_real_signatures() {
                 recipient: Some(recipient.into()),
                 timestamp: now + 3600,
             },
-            &store,
+            store,
             &EthereumVerifier,
             &anchors,
         )
     };
 
     // 3. $200 → AWS: ALLOW via Alice → FinanceAgent → InvoiceAgent.
-    match ask(200, "AWS") {
+    match ask(&store, 200, "AWS") {
         AuthorizationDecision::Allow(e) => {
             assert_eq!(e.mandate_id, m2.id);
             assert_eq!(e.root_principal, address_of(&alice));
@@ -125,15 +136,66 @@ fn demo_flow_with_real_signatures() {
     }
 
     // 4. $700 → AWS: DENY AMOUNT_EXCEEDED (the forgery does not help).
-    match ask(700, "AWS") {
+    match ask(&store, 700, "AWS") {
         AuthorizationDecision::Deny(d) => assert_eq!(d.reason.code(), "AMOUNT_EXCEEDED"),
         other => panic!("expected DENY, got {other:?}"),
     }
 
     // 5. $100 → RandomVendor: DENY RECIPIENT_NOT_ALLOWED.
-    match ask(100, "RandomVendor") {
+    match ask(&store, 100, "RandomVendor") {
         AuthorizationDecision::Deny(d) => {
             assert_eq!(d.reason.code(), "RECIPIENT_NOT_ALLOWED")
+        }
+        other => panic!("expected DENY, got {other:?}"),
+    }
+
+    // Mallory publishes a revocation of M1 "from Alice". It must be ignored.
+    let fake_revocation = sign_revocation(
+        &UnsignedRevocation {
+            mandate_id: m1.id.clone(),
+            issuer: address_of(&mallory),
+            revoked_at: now + 7200,
+            reason: None,
+        },
+        &mallory,
+    )
+    .unwrap();
+    store.1.push(fake_revocation);
+    assert!(ask(&store, 100, "AWS").is_allowed());
+
+    // 6. Alice revokes M1.
+    let revocation = sign_revocation(
+        &UnsignedRevocation {
+            mandate_id: m1.id.clone(),
+            issuer: address_of(&alice),
+            revoked_at: now + 7200,
+            reason: Some("user_revoked".into()),
+        },
+        &alice,
+    )
+    .unwrap();
+    store.1.push(revocation.clone());
+
+    // 7. $100 → AWS: DENY ANCESTOR_REVOKED, naming M1 and the full path.
+    match ask(&store, 100, "AWS") {
+        AuthorizationDecision::Deny(d) => {
+            assert_eq!(d.reason.code(), "ANCESTOR_REVOKED");
+            assert_eq!(
+                d.reason,
+                mandate_core::DenyReason::AncestorRevoked {
+                    revoked: m1.id.clone(),
+                    revocation_id: revocation.id.clone(),
+                }
+            );
+            assert_eq!(d.mandate_id, Some(m2.id.clone()));
+            assert_eq!(
+                d.delegation_path,
+                vec![
+                    address_of(&alice),
+                    address_of(&finance),
+                    address_of(&invoice)
+                ]
+            );
         }
         other => panic!("expected DENY, got {other:?}"),
     }

@@ -10,8 +10,8 @@ Mandates and revocations are stored as public, queryable, time-scoped records on
 
 > [!NOTE]
 > **Status: v0.1 in active development** for the Arkiv Global Tour Stop hackathon (Security track, submission 18 Oct 2026).
-> Working and tested: mandate types, deterministic IDs, delegation validation, Ethereum signatures and the authorization engine (ALLOW/DENY with explanations).
-> Revocation, CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
+> Working and tested: mandate types, deterministic IDs, delegation validation, Ethereum signatures, the authorization engine (ALLOW/DENY with explanations) and revocation. The full demo flow runs in memory with real signatures.
+> The CLI, HTTP API and Arkiv integration are **not built yet**. See [Roadmap](#roadmap).
 
 ---
 
@@ -99,9 +99,16 @@ A child can lower a limit, drop recipients or expire sooner. It can **never remo
 
 ## Revocation
 
-*Designed. Not built yet (Milestone 6).*
+Revocation is a **separate signed document**, never an edit to the mandate. Only a mandate's own issuer can revoke it. Alice revokes M1; FinanceAgent revokes M2.
 
-Revocation is a **separate signed document**, never an edit to the mandate. A mandate's issuer can revoke it. While checking a request, the engine walks the whole chain from the agent's mandate up to the root, and a revocation anywhere on that path denies the request with `REVOKED` or `ANCESTOR_REVOKED`.
+While checking a request, the engine walks the whole chain from the agent's mandate up to the root. A valid revocation anywhere on that path denies the request:
+
+| Revoked | InvoiceAgent's request is denied with |
+|---|---|
+| M2 (its own mandate) | `REVOKED` |
+| M1 (an ancestor) | `ANCESTOR_REVOKED`, naming M1 and the revocation record |
+
+A revocation counts only if it targets that exact mandate ID, comes from the mandate's issuer, and its signature verifies. Forged or misdirected revocations are ignored, and a forgery can't hide a real revocation: the engine checks every revocation the store returns, not just the first. A revocation applies as soon as it's visible. Its `revoked_at` timestamp is kept for audit only, so clock skew can't keep a revoked mandate alive.
 
 ## Why Arkiv
 
@@ -283,8 +290,9 @@ Mandate v0.1 is designed to reject each of the following. ✅ means it's impleme
 | Amount above the delegated limit | Effective constraints of the chain | ✅ |
 | Recipient not allowed | Effective constraints of the chain | ✅ |
 | Forged record planted next to a real one | Every candidate verified; closest real reason reported | ✅ |
-| Revoked authority | Signed revocation documents | Planned (M6) |
-| Ancestor revoked | Full-chain check on every request | Planned (M6) |
+| Revoked authority | Signed revocation documents | ✅ |
+| Ancestor revoked | Full-chain check on every request | ✅ |
+| Forged or replayed revocation | Must target the exact mandate, be signed by its issuer, and use the revocation domain separator | ✅ |
 
 ## Threat model
 
@@ -342,7 +350,7 @@ Mandate v0.1 does not implement the paper's group grammars or negative clauses. 
 - [x] **M3** Delegation validation (`can_delegate`)
 - [x] **M4** Ethereum-compatible signatures
 - [x] **M5** Authorization engine: requests, decisions, evidence, chain traversal, expiry, trust anchors
-- [ ] **M6** Revocation and ancestor revocation
+- [x] **M6** Revocation and ancestor revocation
 - [ ] **M7** In-memory store and the full demo flow without Arkiv
 - [ ] **M8** CLI
 - [ ] **M9** Arkiv adapter (TypeScript, Tiramisu testnet)
@@ -358,8 +366,8 @@ Out of scope for v0.1: tokens, NFTs, DAOs, a custom policy language, DIDs, custo
 ```text
 mandate/
 ├── crates/
-│   ├── mandate-core/     protocol types, IDs, delegation rules, authorization engine (no crypto, no I/O)
-│   └── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification
+│   ├── mandate-core/     protocol types, IDs, delegation, revocation, authorization engine (no crypto, no I/O)
+│   └── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification of mandates and revocations
 ├── docs/
 │   └── decisions.md      every design decision and deviation from the spec
 ├── AGENTS.md             rules for coding agents working on this repo

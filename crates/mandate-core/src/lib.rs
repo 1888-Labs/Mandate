@@ -10,6 +10,7 @@ pub mod encoding;
 pub mod error;
 pub mod mandate;
 pub mod principal;
+pub mod revocation;
 pub mod store;
 
 mod hex_bytes;
@@ -20,8 +21,12 @@ pub use authorization::{
 };
 pub use capability::{Constraints, ResourceId, ResourceParseError};
 pub use delegation::can_delegate;
-pub use encoding::{canonical_encoding, compute_mandate_id, mandate_digest};
+pub use encoding::{
+    canonical_encoding, canonical_revocation_encoding, compute_mandate_id, compute_revocation_id,
+    mandate_digest, revocation_digest,
+};
 pub use error::DelegationError;
 pub use mandate::{Mandate, MandateId, UnsignedMandate};
 pub use principal::PrincipalId;
+pub use revocation::{Revocation, RevocationId, UnsignedRevocation};
 pub use store::{MandateStore, SignatureVerifier};

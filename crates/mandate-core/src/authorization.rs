@@ -7,6 +7,7 @@
 //! 2. each edge is a valid delegation (`can_delegate`),
 //! 3. the root was issued by a trusted owner of the resource,
 //! 4. no mandate in the chain has expired,
+//! 5. no mandate in the chain has been revoked by its issuer,
 //!
 //! and then evaluates the request against the chain's effective
 //! constraints. Every outcome carries an explanation.
@@ -19,6 +20,7 @@ use crate::delegation::can_delegate;
 use crate::error::DelegationError;
 use crate::mandate::{Mandate, MandateId};
 use crate::principal::PrincipalId;
+use crate::revocation::{Revocation, RevocationId};
 use crate::store::{MandateStore, SignatureVerifier};
 
 /// Longest chain (in delegation hops) the engine will follow.
@@ -99,10 +101,13 @@ pub enum DenyReason {
     /// The subject's own mandate was revoked.
     Revoked {
         mandate_id: MandateId,
+        revocation_id: RevocationId,
     },
-    /// A mandate above the subject's was revoked.
+    /// A mandate above the subject's was revoked. `revoked` is the
+    /// highest revoked mandate in the chain.
     AncestorRevoked {
         revoked: MandateId,
+        revocation_id: RevocationId,
     },
     ActionNotAllowed,
     ResourceNotAllowed,
@@ -338,6 +343,25 @@ where
         return Err(deny(reason, &chain));
     }
 
+    for (depth, m) in chain.iter().enumerate() {
+        let Some(revocation) = valid_revocation(m, store, verifier) else {
+            continue;
+        };
+        let is_leaf = depth + 1 == chain.len();
+        let reason = if is_leaf {
+            DenyReason::Revoked {
+                mandate_id: m.id.clone(),
+                revocation_id: revocation.id,
+            }
+        } else {
+            DenyReason::AncestorRevoked {
+                revoked: m.id.clone(),
+                revocation_id: revocation.id,
+            }
+        };
+        return Err(deny(reason, &chain));
+    }
+
     let effective = effective_constraints(&chain);
 
     if let Some(maximum) = effective.max_amount {
@@ -370,6 +394,21 @@ where
         delegation_path: delegation_path(&chain),
         chain: chain.iter().map(|m| m.id.clone()).collect(),
         effective_constraints: effective,
+    })
+}
+
+/// The first revocation of `mandate` that actually counts: it targets this
+/// mandate, comes from the mandate's own issuer, and is validly signed.
+/// Anything else the store returns is ignored.
+fn valid_revocation<S, V>(mandate: &Mandate, store: &S, verifier: &V) -> Option<Revocation>
+where
+    S: MandateStore,
+    V: SignatureVerifier,
+{
+    let mut revocations = store.find_revocations(&mandate.id);
+    revocations.sort_by(|a, b| a.id.cmp(&b.id));
+    revocations.into_iter().find(|r| {
+        r.mandate_id == mandate.id && r.issuer == mandate.issuer && verifier.verify_revocation(r)
     })
 }
 
@@ -413,8 +452,9 @@ fn effective_constraints(chain: &[Mandate]) -> Constraints {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::compute_mandate_id;
+    use crate::encoding::{compute_mandate_id, compute_revocation_id};
     use crate::mandate::UnsignedMandate;
+    use crate::revocation::UnsignedRevocation;
 
     // --- Test doubles ---
 
@@ -427,10 +467,15 @@ mod tests {
             m.id == compute_mandate_id(&m.unsigned())
                 && m.signature == format!("signed-by:{}", m.issuer).into_bytes()
         }
+
+        fn verify_revocation(&self, r: &Revocation) -> bool {
+            r.id == compute_revocation_id(&r.unsigned())
+                && r.signature == format!("signed-by:{}", r.issuer).into_bytes()
+        }
     }
 
     #[derive(Default)]
-    struct VecStore(Vec<Mandate>);
+    struct VecStore(Vec<Mandate>, Vec<Revocation>);
 
     impl MandateStore for VecStore {
         fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
@@ -441,6 +486,14 @@ mod tests {
             self.0
                 .iter()
                 .filter(|m| &m.subject == s && m.action == a && &m.resource == r)
+                .cloned()
+                .collect()
+        }
+
+        fn find_revocations(&self, id: &MandateId) -> Vec<Revocation> {
+            self.1
+                .iter()
+                .filter(|r| &r.mandate_id == id)
                 .cloned()
                 .collect()
         }
@@ -521,7 +574,7 @@ mod tests {
     fn demo() -> (VecStore, Mandate, Mandate) {
         let m1 = sign(m1_unsigned());
         let m2 = sign(m2_unsigned(&m1));
-        (VecStore(vec![m1.clone(), m2.clone()]), m1, m2)
+        (VecStore(vec![m1.clone(), m2.clone()], vec![]), m1, m2)
     }
 
     fn request(amount: u64, recipient: &str) -> AuthorizationRequest {
@@ -590,7 +643,7 @@ mod tests {
             constraints: Constraints::default(),
             ..m1_unsigned()
         });
-        let store = VecStore(vec![m]);
+        let store = VecStore(vec![m], vec![]);
         assert!(check(&store, &request(u64::MAX, "Anyone")).is_allowed());
         let req = AuthorizationRequest {
             amount: None,
@@ -744,7 +797,7 @@ mod tests {
             expires_at: m1.expires_at,
             ..m2_unsigned(&m1)
         });
-        let store = VecStore(vec![m1.clone(), m2]);
+        let store = VecStore(vec![m1.clone(), m2], vec![]);
         let req = AuthorizationRequest {
             timestamp: m1.expires_at,
             ..request(200, "AWS")
@@ -792,7 +845,7 @@ mod tests {
     fn forged_leaf_is_denied() {
         let m1 = sign(m1_unsigned());
         let m2 = forge(m2_unsigned(&m1));
-        let store = VecStore(vec![m1, m2.clone()]);
+        let store = VecStore(vec![m1, m2.clone()], vec![]);
         assert_eq!(
             denial(check(&store, &request(200, "AWS"))).reason,
             DenyReason::InvalidSignature { mandate_id: m2.id }
@@ -804,7 +857,7 @@ mod tests {
         // A forged M1 "from Alice" cannot back an honestly signed M2.
         let m1 = forge(m1_unsigned());
         let m2 = sign(m2_unsigned(&m1));
-        let store = VecStore(vec![m1.clone(), m2]);
+        let store = VecStore(vec![m1.clone(), m2], vec![]);
         assert_eq!(
             denial(check(&store, &request(200, "AWS"))).reason,
             DenyReason::InvalidSignature { mandate_id: m1.id }
@@ -814,7 +867,7 @@ mod tests {
     #[test]
     fn missing_parent_is_denied() {
         let (_, m1, m2) = demo();
-        let store = VecStore(vec![m2.clone()]);
+        let store = VecStore(vec![m2.clone()], vec![]);
         assert_eq!(
             denial(check(&store, &request(200, "AWS"))).reason,
             DenyReason::InvalidDelegation {
@@ -836,7 +889,7 @@ mod tests {
             },
             ..m2_unsigned(&m1)
         });
-        let store = VecStore(vec![m1, m2.clone()]);
+        let store = VecStore(vec![m1, m2.clone()], vec![]);
         assert_eq!(
             denial(check(&store, &request(200, "AWS"))).reason,
             DenyReason::InvalidDelegation {
@@ -878,7 +931,7 @@ mod tests {
             constraints: Constraints::default(),
             ..m1_unsigned()
         });
-        let store = VecStore(vec![selfie.clone()]);
+        let store = VecStore(vec![selfie.clone()], vec![]);
         assert_eq!(
             denial(check(&store, &request(700, "Anyone"))).reason,
             DenyReason::UntrustedRoot {
@@ -895,7 +948,7 @@ mod tests {
             resource: "wallet:someone-elses".parse().unwrap(),
             ..m1_unsigned()
         });
-        let store = VecStore(vec![m]);
+        let store = VecStore(vec![m], vec![]);
         let req = AuthorizationRequest {
             resource: "wallet:someone-elses".parse().unwrap(),
             ..request(1, "AWS")
@@ -935,6 +988,9 @@ mod tests {
             }
             fn find_mandates(&self, _: &PrincipalId, _: &str, _: &ResourceId) -> Vec<Mandate> {
                 self.0 .0.clone()
+            }
+            fn find_revocations(&self, id: &MandateId) -> Vec<Revocation> {
+                self.0.find_revocations(id)
             }
         }
         let (store, _, _) = demo();
@@ -1008,11 +1064,15 @@ mod tests {
             (
                 DenyReason::Revoked {
                     mandate_id: id.clone(),
+                    revocation_id: RevocationId("0x".into()),
                 },
                 "REVOKED",
             ),
             (
-                DenyReason::AncestorRevoked { revoked: id },
+                DenyReason::AncestorRevoked {
+                    revoked: id,
+                    revocation_id: RevocationId("0x".into()),
+                },
                 "ANCESTOR_REVOKED",
             ),
             (DenyReason::ActionNotAllowed, "ACTION_NOT_ALLOWED"),
@@ -1021,5 +1081,229 @@ mod tests {
         for (reason, code) in cases {
             assert_eq!(reason.code(), code);
         }
+    }
+    // --- Revocation (Milestone 6) ---
+
+    fn revoke(m: &Mandate, by: PrincipalId) -> Revocation {
+        let issuer = by.clone();
+        UnsignedRevocation {
+            mandate_id: m.id.clone(),
+            issuer,
+            revoked_at: NOW + 2 * HOUR,
+            reason: Some("user_revoked".into()),
+        }
+        .into_revocation(format!("signed-by:{by}").into_bytes())
+    }
+
+    fn forge_revocation(m: &Mandate) -> Revocation {
+        UnsignedRevocation {
+            mandate_id: m.id.clone(),
+            issuer: m.issuer.clone(),
+            revoked_at: NOW + 2 * HOUR,
+            reason: None,
+        }
+        .into_revocation(b"signed-by:someone-else".to_vec())
+    }
+
+    #[test]
+    fn directly_revoked_mandate_is_denied() {
+        let (mut store, _, m2) = demo();
+        let r = revoke(&m2, finance());
+        store.1.push(r.clone());
+        let d = denial(check(&store, &request(100, "AWS")));
+        assert_eq!(
+            d.reason,
+            DenyReason::Revoked {
+                mandate_id: m2.id.clone(),
+                revocation_id: r.id
+            }
+        );
+        assert_eq!(d.reason.code(), "REVOKED");
+        assert_eq!(d.mandate_id, Some(m2.id));
+    }
+
+    #[test]
+    fn revoked_parent_invalidates_child() {
+        // Demo steps 6–7: Alice revokes M1; InvoiceAgent's M2 stops working
+        // without being revoked itself.
+        let (mut store, m1, m2) = demo();
+        assert!(check(&store, &request(100, "AWS")).is_allowed());
+
+        let r = revoke(&m1, alice());
+        store.1.push(r.clone());
+        let d = denial(check(&store, &request(100, "AWS")));
+        assert_eq!(
+            d.reason,
+            DenyReason::AncestorRevoked {
+                revoked: m1.id.clone(),
+                revocation_id: r.id
+            }
+        );
+        assert_eq!(d.reason.code(), "ANCESTOR_REVOKED");
+        assert_eq!(d.mandate_id, Some(m2.id));
+        assert_eq!(d.delegation_path, vec![alice(), finance(), invoice()]);
+
+        // FinanceAgent's own use of M1 is cut off too.
+        let req = AuthorizationRequest {
+            subject: finance(),
+            ..request(100, "AWS")
+        };
+        assert_eq!(denial(check(&store, &req)).reason.code(), "REVOKED");
+    }
+
+    #[test]
+    fn revoked_grandparent_invalidates_descendant() {
+        let (mut store, leaf) = chain_of(2); // root → p1 → p2
+        let req = AuthorizationRequest {
+            subject: leaf,
+            ..request(1, "AWS")
+        };
+        assert!(check(&store, &req).is_allowed());
+
+        let root = store.0[0].clone();
+        store.1.push(revoke(&root, root.issuer.clone()));
+        assert_eq!(
+            denial(check(&store, &req)).reason,
+            DenyReason::AncestorRevoked {
+                revoked: root.id.clone(),
+                revocation_id: store.1[0].id.clone()
+            }
+        );
+    }
+
+    #[test]
+    fn highest_revoked_ancestor_is_reported() {
+        let (mut store, m1, m2) = demo();
+        store.1.push(revoke(&m2, finance()));
+        store.1.push(revoke(&m1, alice()));
+        let d = denial(check(&store, &request(100, "AWS")));
+        assert!(matches!(
+            d.reason,
+            DenyReason::AncestorRevoked { ref revoked, .. } if *revoked == m1.id
+        ));
+    }
+
+    #[test]
+    fn unrelated_revocation_does_not_affect_mandate() {
+        let (mut store, _, _) = demo();
+        // Alice revokes a different grant she made to FinanceAgent.
+        let other = sign(UnsignedMandate {
+            nonce: 42,
+            ..m1_unsigned()
+        });
+        store.0.push(other.clone());
+        store.1.push(revoke(&other, alice()));
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+    }
+
+    #[test]
+    fn forged_revocation_is_rejected() {
+        let (mut store, m1, _) = demo();
+        store.1.push(forge_revocation(&m1));
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+    }
+
+    #[test]
+    fn revocation_by_non_issuer_is_ignored() {
+        // Correctly signed, but by principals who did not issue M1.
+        let (mut store, m1, _) = demo();
+        store.1.push(revoke(&m1, finance()));
+        store.1.push(revoke(&m1, invoice()));
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+    }
+
+    #[test]
+    fn revocation_with_tampered_content_is_ignored() {
+        let (mut store, m1, m2) = demo();
+        // A real revocation of M2, relabelled to target M1 (ID recomputed).
+        let real = revoke(&m2, finance());
+        let mut retargeted = real.unsigned();
+        retargeted.mandate_id = m1.id.clone();
+        retargeted.issuer = alice();
+        store
+            .1
+            .push(retargeted.into_revocation(real.signature.clone()));
+        assert!(check(&store, &request(200, "AWS")).is_allowed());
+    }
+
+    #[test]
+    fn revocation_returned_for_wrong_mandate_is_ignored() {
+        /// A store that returns every revocation for every query.
+        struct LeakyStore(VecStore);
+        impl MandateStore for LeakyStore {
+            fn get_mandate(&self, id: &MandateId) -> Option<Mandate> {
+                self.0.get_mandate(id)
+            }
+            fn find_mandates(&self, s: &PrincipalId, a: &str, r: &ResourceId) -> Vec<Mandate> {
+                self.0.find_mandates(s, a, r)
+            }
+            fn find_revocations(&self, _: &MandateId) -> Vec<Revocation> {
+                self.0 .1.clone()
+            }
+        }
+        let (mut store, _, _) = demo();
+        let other = sign(UnsignedMandate {
+            nonce: 42,
+            ..m1_unsigned()
+        });
+        store.1.push(revoke(&other, alice()));
+        let d = authorize(
+            &request(200, "AWS"),
+            &LeakyStore(store),
+            &FakeVerifier,
+            &anchors(),
+        );
+        assert!(d.is_allowed());
+    }
+
+    #[test]
+    fn forged_revocation_cannot_hide_real_one() {
+        // Whatever order the store returns them in, the real one counts.
+        let (mut store, m1, _) = demo();
+        let real = revoke(&m1, alice());
+        store.1.push(forge_revocation(&m1));
+        store.1.push(real.clone());
+        assert_eq!(
+            denial(check(&store, &request(100, "AWS"))).reason.code(),
+            "ANCESTOR_REVOKED"
+        );
+        store.1.reverse();
+        assert_eq!(
+            denial(check(&store, &request(100, "AWS"))).reason.code(),
+            "ANCESTOR_REVOKED"
+        );
+    }
+
+    #[test]
+    fn revocation_applies_regardless_of_revoked_at() {
+        // revoked_at is informational. A revocation timestamped after the
+        // request (e.g. clock skew) still applies once published.
+        let (mut store, m1, _) = demo();
+        let r = UnsignedRevocation {
+            mandate_id: m1.id.clone(),
+            issuer: alice(),
+            revoked_at: NOW + 1000 * HOUR,
+            reason: None,
+        }
+        .into_revocation(format!("signed-by:{}", alice()).into_bytes());
+        store.1.push(r);
+        assert!(!check(&store, &request(100, "AWS")).is_allowed());
+    }
+
+    #[test]
+    fn revoking_one_branch_leaves_sibling_branch_working() {
+        // FinanceAgent gave InvoiceAgent two separate mandates; revoking one
+        // leaves the other usable.
+        let (mut store, m1, m2) = demo();
+        let sibling = sign(UnsignedMandate {
+            nonce: 3,
+            ..m2_unsigned(&m1)
+        });
+        store.0.push(sibling.clone());
+        store.1.push(revoke(&m2, finance()));
+        let AuthorizationDecision::Allow(e) = check(&store, &request(200, "AWS")) else {
+            panic!("expected ALLOW via the sibling mandate");
+        };
+        assert_eq!(e.mandate_id, sibling.id);
     }
 }

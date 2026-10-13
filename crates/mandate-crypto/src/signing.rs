@@ -1,6 +1,8 @@
 //! Producing issuer signatures.
 
-use mandate_core::{mandate_digest, Mandate, UnsignedMandate};
+use mandate_core::{
+    mandate_digest, revocation_digest, Mandate, Revocation, UnsignedMandate, UnsignedRevocation,
+};
 use sha3::{Digest, Keccak256};
 
 use crate::error::SignatureError;
@@ -48,4 +50,23 @@ pub fn sign_mandate(
     }
     let signature = personal_sign(&mandate_digest(mandate), key)?;
     Ok(mandate.clone().into_mandate(signature.to_vec()))
+}
+
+/// Sign `revocation` as its issuer and return the signed revocation.
+///
+/// Refuses if `key` does not belong to `revocation.issuer`. Whether that
+/// issuer is *allowed* to revoke the target mandate is decided by the
+/// authorization engine (v0.1: only the mandate's own issuer).
+pub fn sign_revocation(
+    revocation: &UnsignedRevocation,
+    key: &SigningKey,
+) -> Result<Revocation, SignatureError> {
+    if !is_canonical_address(&revocation.issuer) {
+        return Err(SignatureError::NonCanonicalAddress);
+    }
+    if address_of(key) != revocation.issuer {
+        return Err(SignatureError::IssuerMismatch);
+    }
+    let signature = personal_sign(&revocation_digest(revocation), key)?;
+    Ok(revocation.clone().into_revocation(signature.to_vec()))
 }

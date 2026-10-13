@@ -1,7 +1,10 @@
 //! Checking issuer signatures.
 
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-use mandate_core::{compute_mandate_id, mandate_digest, Mandate, PrincipalId, SignatureVerifier};
+use mandate_core::{
+    compute_mandate_id, compute_revocation_id, mandate_digest, revocation_digest, Mandate,
+    PrincipalId, Revocation, SignatureVerifier,
+};
 
 use crate::error::SignatureError;
 use crate::keys::{address_of_verifying_key, is_canonical_address};
@@ -15,6 +18,10 @@ pub struct EthereumVerifier;
 impl SignatureVerifier for EthereumVerifier {
     fn verify_mandate(&self, mandate: &Mandate) -> bool {
         verify_mandate_signature(mandate).is_ok()
+    }
+
+    fn verify_revocation(&self, revocation: &Revocation) -> bool {
+        verify_revocation_signature(revocation).is_ok()
     }
 }
 
@@ -32,6 +39,26 @@ pub fn verify_mandate_signature(mandate: &Mandate) -> Result<(), SignatureError>
     }
     let signer = recover_signer(&mandate_digest(&unsigned), &mandate.signature)?;
     if signer != mandate.issuer {
+        return Err(SignatureError::IssuerMismatch);
+    }
+    Ok(())
+}
+
+/// Verify that `revocation` was signed by its stated issuer and its ID is
+/// honest.
+///
+/// This does not decide whether that issuer may revoke the target mandate.
+/// The authorization engine does that.
+pub fn verify_revocation_signature(revocation: &Revocation) -> Result<(), SignatureError> {
+    if !is_canonical_address(&revocation.issuer) {
+        return Err(SignatureError::NonCanonicalAddress);
+    }
+    let unsigned = revocation.unsigned();
+    if revocation.id != compute_revocation_id(&unsigned) {
+        return Err(SignatureError::IdMismatch);
+    }
+    let signer = recover_signer(&revocation_digest(&unsigned), &revocation.signature)?;
+    if signer != revocation.issuer {
         return Err(SignatureError::IssuerMismatch);
     }
     Ok(())
@@ -66,8 +93,8 @@ pub fn recover_signer(message: &[u8; 32], signature: &[u8]) -> Result<PrincipalI
 mod tests {
     use super::*;
     use crate::keys::{address_of, SigningKey};
-    use crate::signing::{personal_sign, sign_mandate};
-    use mandate_core::{Constraints, UnsignedMandate};
+    use crate::signing::{personal_sign, sign_mandate, sign_revocation};
+    use mandate_core::{Constraints, UnsignedMandate, UnsignedRevocation};
 
     fn key(n: u8) -> SigningKey {
         let mut bytes = [0u8; 32];
@@ -296,6 +323,67 @@ mod tests {
         assert_eq!(
             recover_signer(&message, &signature),
             Ok(address_of(&alice()))
+        );
+    }
+    // --- Revocations ---
+
+    fn unsigned_revocation() -> UnsignedRevocation {
+        UnsignedRevocation {
+            mandate_id: signed().id,
+            issuer: address_of(&alice()),
+            revoked_at: 1_760_003_600,
+            reason: Some("user_revoked".into()),
+        }
+    }
+
+    #[test]
+    fn valid_revocation_is_accepted() {
+        let r = sign_revocation(&unsigned_revocation(), &alice()).unwrap();
+        assert_eq!(verify_revocation_signature(&r), Ok(()));
+    }
+
+    #[test]
+    fn forged_revocation_signature_is_rejected() {
+        // Mallory signs a revocation that claims Alice as its issuer.
+        let forged = personal_sign(&revocation_digest(&unsigned_revocation()), &mallory()).unwrap();
+        let r = unsigned_revocation().into_revocation(forged.to_vec());
+        assert_eq!(
+            verify_revocation_signature(&r),
+            Err(SignatureError::IssuerMismatch)
+        );
+        assert_eq!(
+            sign_revocation(&unsigned_revocation(), &mallory()),
+            Err(SignatureError::IssuerMismatch)
+        );
+    }
+
+    #[test]
+    fn retargeted_revocation_is_rejected() {
+        let real = sign_revocation(&unsigned_revocation(), &alice()).unwrap();
+        let mut u = real.unsigned();
+        u.mandate_id = mandate_core::MandateId(format!("0x{}", "ab".repeat(32)));
+        let moved = u.into_revocation(real.signature.clone());
+        assert_eq!(
+            verify_revocation_signature(&moved),
+            Err(SignatureError::IssuerMismatch)
+        );
+
+        let mut stale = real;
+        stale.mandate_id = mandate_core::MandateId("0x02".into());
+        assert_eq!(
+            verify_revocation_signature(&stale),
+            Err(SignatureError::IdMismatch)
+        );
+    }
+
+    #[test]
+    fn mandate_signature_cannot_be_reused_as_revocation() {
+        // Domain separation: Alice's signature on M1 is not a revocation.
+        let m = signed();
+        let r = unsigned_revocation().into_revocation(m.signature.clone());
+        assert_eq!(
+            verify_revocation_signature(&r),
+            Err(SignatureError::IssuerMismatch)
         );
     }
 }

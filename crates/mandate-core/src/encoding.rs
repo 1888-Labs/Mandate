@@ -24,10 +24,19 @@
 //!     u64(issued_at)
 //!     u64(expires_at)
 //!     u64(nonce)
+//!
+//! revocation =
+//!     str("mandate-revocation/0.1")   domain separator
+//!     str(mandate_id)
+//!     str(issuer)
+//!     u64(revoked_at)
+//!     Option<str>(reason)
 //! ```
 //!
 //! Every variable-length value is length-prefixed, so no two distinct
-//! mandates can produce the same byte string.
+//! mandates can produce the same byte string. The distinct domain
+//! separators mean a mandate signature can never verify as a revocation
+//! signature, or the reverse.
 //!
 //! `allowed_recipients` is a set: its canonical form is sorted and
 //! deduplicated, so `[AWS, GitHub]` and `[GitHub, AWS]` encode identically.
@@ -38,9 +47,13 @@
 use sha3::{Digest, Keccak256};
 
 use crate::mandate::{MandateId, UnsignedMandate};
+use crate::revocation::{RevocationId, UnsignedRevocation};
 
 /// Domain separator prepended to every encoded mandate.
 pub const MANDATE_DOMAIN: &str = "mandate/0.1";
+
+/// Domain separator prepended to every encoded revocation.
+pub const REVOCATION_DOMAIN: &str = "mandate-revocation/0.1";
 
 /// The exact bytes a mandate ID is computed from.
 pub fn canonical_encoding(mandate: &UnsignedMandate) -> Vec<u8> {
@@ -106,6 +119,34 @@ pub fn mandate_digest(mandate: &UnsignedMandate) -> [u8; 32] {
 /// The signature is never part of the ID.
 pub fn compute_mandate_id(mandate: &UnsignedMandate) -> MandateId {
     MandateId(format!("0x{}", hex::encode(mandate_digest(mandate))))
+}
+
+/// The exact bytes a revocation ID is computed from.
+pub fn canonical_revocation_encoding(revocation: &UnsignedRevocation) -> Vec<u8> {
+    let mut out = Vec::with_capacity(128);
+    put_str(&mut out, REVOCATION_DOMAIN);
+    put_str(&mut out, &revocation.mandate_id.0);
+    put_str(&mut out, &revocation.issuer.0);
+    put_u64(&mut out, revocation.revoked_at);
+    match &revocation.reason {
+        None => out.push(0),
+        Some(reason) => {
+            out.push(1);
+            put_str(&mut out, reason);
+        }
+    }
+    out
+}
+
+/// `keccak256(canonical_revocation_encoding(revocation))`: the message the
+/// revoking issuer signs.
+pub fn revocation_digest(revocation: &UnsignedRevocation) -> [u8; 32] {
+    Keccak256::digest(canonical_revocation_encoding(revocation)).into()
+}
+
+/// `revocation_digest` as `0x`-prefixed lowercase hex.
+pub fn compute_revocation_id(revocation: &UnsignedRevocation) -> RevocationId {
+    RevocationId(format!("0x{}", hex::encode(revocation_digest(revocation))))
 }
 
 fn put_u64(out: &mut Vec<u8>, value: u64) {
