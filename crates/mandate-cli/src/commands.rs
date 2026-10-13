@@ -351,3 +351,21 @@ pub fn chain(home: &Path, reference: &str) -> Result<Outcome, CliError> {
     output::print_chain(&state, &state.store(), mandate, now());
     Ok(Outcome::Ok)
 }
+
+pub fn export(home: &Path, reference: &str, revocations: bool) -> Result<Outcome, CliError> {
+    let state = State::load(home)?;
+    let mandate = load_mandate(&state, reference)?;
+    let json = if revocations {
+        let found: Vec<_> = state
+            .revocations
+            .iter()
+            .filter(|r| r.mandate_id == mandate.id)
+            .collect();
+        serde_json::to_string_pretty(&found)
+    } else {
+        serde_json::to_string_pretty(&mandate)
+    }
+    .map_err(|e| CliError::Usage(format!("could not encode JSON: {e}")))?;
+    println!("{json}");
+    Ok(Outcome::Ok)
+}

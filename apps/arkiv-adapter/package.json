@@ -1,0 +1,25 @@
+{
+  "name": "@mandate/arkiv-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HTTP bridge between the Mandate Rust engine and Arkiv. Stores and queries signed mandates and revocations; never interprets them.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "test:arkiv": "node --env-file-if-exists=.env test/arkiv-acceptance.ts"
+  },
+  "dependencies": {
+    "@arkiv-network/sdk": "0.8.1",
+    "viem": "2.57.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}

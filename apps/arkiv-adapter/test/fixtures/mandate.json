@@ -1,0 +1,22 @@
+{
+  "id": "0x57bde689469b6e11890cf694dba59f38ff45d7c9fde1af894363da3d96d49f50",
+  "issuer": "0xfcffc8822f1df6a9ebb59a8808fd9d968fde5c80",
+  "subject": "0xafbe5f574857a98764b32fcab3ea959311ece2d8",
+  "action": "transfer",
+  "resource": {
+    "kind": "wallet",
+    "id": "treasury-demo"
+  },
+  "constraints": {
+    "maxAmount": 300,
+    "allowedRecipients": [
+      "AWS"
+    ]
+  },
+  "parent": "0xb4072ad70c95b6bde646682a0ac15347baa97349c1515d3f8222e98449bd8739",
+  "delegable": false,
+  "issuedAt": 1791852453,
+  "expiresAt": 1791938853,
+  "nonce": 1791852453273973432,
+  "signature": "0xdcc1d53a4b0a0bd76c273b6e98f563299f55a1c69695d859efe189e8553384265994a0a6aa3b9413311680badc87a918ff8789bfa042bd06c8cb9ddbff51a3d21c"
+}

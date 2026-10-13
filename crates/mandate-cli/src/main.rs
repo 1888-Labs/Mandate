@@ -71,6 +71,15 @@ enum Command {
         /// Mandate alias (M1), full ID or ID prefix.
         mandate: String,
     },
+
+    /// Print a mandate's signed JSON document, exactly as stored and published.
+    Export {
+        /// Mandate alias (M1), full ID or ID prefix.
+        mandate: String,
+        /// Print the signed revocations of this mandate instead (a JSON array).
+        #[arg(long)]
+        revocations: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -208,6 +217,10 @@ fn run(cli: Cli) -> Result<Outcome, CliError> {
         Command::Revoke { mandate, reason } => commands::revoke(home, &mandate, reason),
         Command::Inspect { mandate } => commands::inspect(home, &mandate),
         Command::Chain { mandate } => commands::chain(home, &mandate),
+        Command::Export {
+            mandate,
+            revocations,
+        } => commands::export(home, &mandate, revocations),
     }
 }
 
