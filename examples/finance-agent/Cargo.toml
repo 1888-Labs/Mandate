@@ -1,0 +1,16 @@
+[package]
+name = "finance-agent"
+description = "Demo: a prompt-injected agent whose payments are stopped by Mandate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+mandate-core = { workspace = true }
+mandate-crypto = { workspace = true }
+mandate-server = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

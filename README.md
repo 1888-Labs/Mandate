@@ -72,6 +72,8 @@ InvoiceAgent
 
 InvoiceAgent's mandate never had to be revoked on its own. Revoking an ancestor cuts off everything delegated beneath it.
 
+**See it stop a prompt-injected agent:** `cargo run -p finance-agent`. The agent obeys an invoice email telling it to send $900, and then $250 to an attacker. Its payment tool asks Mandate first, so only the real $200 AWS payment executes ([details](examples/finance-agent)).
+
 ## The core rule
 
 > **A delegated mandate may only reduce authority. It may never expand it.**
@@ -496,7 +498,7 @@ Mandate v0.1 does not implement the paper's group grammars or negative clauses. 
 - [x] **M8** CLI
 - [x] **M9** Arkiv adapter (TypeScript, Tiramisu testnet), [`arkiv/schema.md`](arkiv/schema.md), [`arkiv/friction.md`](arkiv/friction.md)
 - [x] **M10** Rust HTTP server, backed by Arkiv
-- [ ] **M11** Demo agent: a prompt-injected agent blocked by Mandate
+- [x] **M11** Demo agent: a prompt-injected agent blocked by Mandate ([`examples/finance-agent`](examples/finance-agent))
 - [ ] **M12** Web UI
 - [ ] Public deployment, demo video
 
@@ -518,13 +520,15 @@ mandate/
 │   └── friction.md       real Arkiv development friction
 ├── docs/
 │   └── decisions.md      every design decision and deviation from the spec
+├── examples/
+│   └── finance-agent/    a prompt-injected agent whose payments Mandate stops
 ├── scripts/
 │   └── demo-arkiv.sh     the full demo against Arkiv Tiramisu
 ├── AGENTS.md             rules for coding agents working on this repo
 └── BUILD_SPEC.md         full v0.1 specification
 ```
 
-Planned: `apps/web`, `examples/finance-agent`.
+Planned: `apps/web`.
 
 ## Development
 

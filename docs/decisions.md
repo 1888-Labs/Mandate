@@ -302,3 +302,19 @@ Mandate entities are owned by the adapter wallet and can be deleted by it. That 
 
 **Consequences**
 A decision against Arkiv takes about 0.65 s (measured live) and costs three Arkiv queries for the demo chain. The anonymous RPC budget is small, so deployments should set `ARKIV_API_KEY`.
+
+---
+
+## 2026-10-13 — Demo agent
+
+**Decision**
+`examples/finance-agent` uses a deterministic, deliberately gullible planner instead of a real LLM. The authorization check is in the mock payment tool, which is bound to the agent's identity at setup. The example runs `mandate-server` in-process (in-memory by default, or Arkiv with `--adapter-url`), and its test asserts that exactly one payment ($200 → AWS) executes.
+
+**Reason**
+The spec asks for a simple, deterministic demo that communicates "the prompt is not the security boundary". A real model might refuse the injection on its own, which would obscure the point, and would need an API key. Putting the check in the tool rather than the agent is the actual security model: the agent is assumed compromisable.
+
+**Alternatives considered**
+An LLM-driven agent through the Claude API. It could be added later as an optional mode; the tool and the API wouldn't change.
+
+**Consequences**
+The demo needs no external services. A third scenario (an attacker recipient → `RECIPIENT_NOT_ALLOWED`) was added beside the spec's two, so both constraint types are shown.

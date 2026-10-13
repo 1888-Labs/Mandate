@@ -382,6 +382,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "finance-agent"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "mandate-core",
+ "mandate-crypto",
+ "mandate-server",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

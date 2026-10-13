@@ -5,6 +5,7 @@ members = [
     "crates/mandate-crypto",
     "crates/mandate-cli",
     "crates/mandate-server",
+    "examples/finance-agent",
 ]
 
 [workspace.package]
@@ -20,6 +21,7 @@ http-body-util = "0.1"
 k256 = { version = "0.13", features = ["ecdsa"] }
 mandate-core = { path = "crates/mandate-core" }
 mandate-crypto = { path = "crates/mandate-crypto" }
+mandate-server = { path = "crates/mandate-server" }
 rand_core = { version = "0.6", features = ["getrandom"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha3 = "0.10"
