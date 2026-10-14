@@ -26,7 +26,23 @@ struct Documents {
 struct StoredDocument {
     entity_key: Option<String>,
     creator: Option<String>,
+    owner: Option<String>,
     document: serde_json::Value,
+}
+
+/// A document plus where it lives on Arkiv. Documents that don't parse are
+/// skipped, and creator/owner addresses that aren't canonical are dropped.
+fn into_stored<T: DeserializeOwned>(d: StoredDocument) -> Option<Stored<T>> {
+    let doc = serde_json::from_value(d.document).ok()?;
+    let address = |a: Option<String>| a.and_then(|a| mandate_crypto::parse_address(&a).ok());
+    Some(Stored {
+        doc,
+        arkiv: ArkivRef {
+            entity_key: d.entity_key,
+            creator: address(d.creator),
+            owner: address(d.owner),
+        },
+    })
 }
 
 #[derive(Deserialize)]
@@ -95,22 +111,7 @@ impl AdapterBackend {
             .json()
             .await
             .map_err(|e| unavailable(format!("adapter returned invalid JSON: {e}")))?;
-        Ok(docs
-            .documents
-            .into_iter()
-            .filter_map(|d| {
-                let doc = serde_json::from_value(d.document).ok()?;
-                Some(Stored {
-                    doc,
-                    arkiv: ArkivRef {
-                        entity_key: d.entity_key,
-                        creator: d
-                            .creator
-                            .and_then(|c| mandate_crypto::parse_address(&c).ok()),
-                    },
-                })
-            })
-            .collect())
+        Ok(docs.documents.into_iter().filter_map(into_stored).collect())
     }
 
     async fn post(&self, path: &str, query: &[(&str, String)], body: Vec<u8>) -> Result<Published> {
@@ -216,5 +217,46 @@ impl Backend for AdapterBackend {
             to_json(revocation)?,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stored(json: serde_json::Value) -> Option<Stored<serde_json::Value>> {
+        into_stored(serde_json::from_value(json).unwrap())
+    }
+
+    #[test]
+    fn keeps_creator_and_owner_lowercased() {
+        let s = stored(serde_json::json!({
+            "entityKey": "0xabc",
+            "creator": "0x2774000000000000000000000000000000000001",
+            "owner": "0x000000000000000000000000000000000000dEaD",
+            "document": { "kind": "revocation" },
+        }))
+        .unwrap();
+        assert_eq!(s.arkiv.entity_key.as_deref(), Some("0xabc"));
+        assert_eq!(
+            s.arkiv.creator,
+            Some(PrincipalId(
+                "0x2774000000000000000000000000000000000001".into()
+            ))
+        );
+        assert_eq!(
+            s.arkiv.owner,
+            Some(PrincipalId(
+                "0x000000000000000000000000000000000000dead".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_owner_is_none() {
+        let missing = stored(serde_json::json!({ "document": {} })).unwrap();
+        assert_eq!(missing.arkiv.owner, None);
+        let malformed = stored(serde_json::json!({ "owner": "not-an-address", "document": {} }));
+        assert_eq!(malformed.unwrap().arkiv.owner, None);
     }
 }

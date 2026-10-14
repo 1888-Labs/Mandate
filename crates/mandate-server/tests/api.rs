@@ -565,6 +565,7 @@ impl Backend for ForeignRevocations {
             r.arkiv = ArkivRef {
                 entity_key: Some("0xforged".into()),
                 creator: Some(PrincipalId(format!("0x{}", "66".repeat(20)))),
+                owner: None,
             };
         }
         Ok(out)

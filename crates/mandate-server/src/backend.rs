@@ -28,6 +28,9 @@ pub struct ArkivRef {
     pub entity_key: Option<String>,
     /// `$creator`: the wallet that created the entity. Immutable on Arkiv.
     pub creator: Option<PrincipalId>,
+    /// `$owner`: the wallet that can still change or delete the entity. The
+    /// burn address once ownership is given up, as for revocations.
+    pub owner: Option<PrincipalId>,
 }
 
 /// A document as read back from the backend.
@@ -121,6 +124,7 @@ fn by_issuer<T>(doc: T, issuer: &PrincipalId) -> Stored<T> {
         arkiv: ArkivRef {
             entity_key: None,
             creator: Some(issuer.clone()),
+            owner: None,
         },
     }
 }
