@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url"
 
 const site = fileURLToPath(new URL("..", import.meta.url))
 const repo = join(site, "..", "..")
-const github = "https://github.com/dicethedev/Mandate"
+const github = "https://github.com/1888-Labs/Mandate"
 
 const sources = [
   ...readdirSync(join(repo, "docs"))

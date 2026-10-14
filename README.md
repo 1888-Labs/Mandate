@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-  <a href="https://github.com/dicethedev/Mandate">
+  <a href="https://github.com/1888-Labs/Mandate">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
       <img alt="Mandate" src=".github/logo-light.svg" width="auto" height="80">

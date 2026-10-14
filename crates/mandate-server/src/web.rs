@@ -14,6 +14,6 @@ pub async fn not_built() -> impl IntoResponse {
          <p>The web UI hasn't been built. Run <code>npm install &amp;&amp; npm run build</code> \
          in <code>apps/web</code>, or set <code>WEB_DIR</code> to a built copy.</p>\
          <p>The API is under <code>/v1</code>: see \
-         <a href=\"https://github.com/dicethedev/Mandate/blob/main/docs/api.md\">docs/api.md</a>.</p>",
+         <a href=\"https://github.com/1888-Labs/Mandate/blob/main/docs/api.md\">docs/api.md</a>.</p>",
     )
 }

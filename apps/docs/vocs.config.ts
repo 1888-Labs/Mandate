@@ -1,6 +1,6 @@
 import { defineConfig } from "vocs/config"
 
-const repo = "https://github.com/dicethedev/Mandate"
+const repo = "https://github.com/1888-Labs/Mandate"
 
 export default defineConfig({
   title: "Mandate",
