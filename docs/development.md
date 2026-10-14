@@ -30,7 +30,7 @@ React + TypeScript + Vite, in [`apps/web`](../apps/web). `mandate-server` serves
 ```bash
 cd apps/web
 npm install
-npm run dev        # http://127.0.0.1:5173, proxying /v1 to mandate-server on :8080
+npm run dev        # http://127.0.0.1:5173, proxying /v1 to mandate-server on :8080 (start it first: scripts/run-local.sh)
 npm run build      # type-check and build into dist/
 npm test           # unit tests (vitest)
 ```

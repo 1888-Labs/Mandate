@@ -69,7 +69,16 @@ export function App() {
         const invoice = d.principals.find((p) => p.name === "invoice-agent")
         if (invoice) setForm((f) => ({ ...f, agent: invoice.address }))
       })
-      .catch((e: unknown) => setFatal(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : String(e)
+        // 502/504 from the dev proxy, or a network error: the API isn't running.
+        const unreachable = /^50[24]\b|Failed to fetch|NetworkError/.test(message)
+        setFatal(
+          unreachable
+            ? "can't reach the Mandate API. Start it with scripts/run-local.sh (it serves on port 8080), then reload."
+            : message,
+        )
+      })
   }, [])
 
   useEffect(() => {
