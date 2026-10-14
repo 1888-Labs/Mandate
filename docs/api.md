@@ -46,6 +46,19 @@ An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `ef
 - **The server's clock decides expiry.** A client-sent `timestamp` is rejected, so agents can't backdate requests.
 - **Unreachable state fails closed.** If Arkiv state can't be read, the answer is `503 STATE_UNAVAILABLE`, never a decision.
 
+## Web app and demo mode
+
+The server also serves the web UI at `/`. With `DEMO_KEYS` set (the *synthetic* keys of the demo principals), it enables:
+
+| Method | Path | What it does |
+|---|---|---|
+| `GET` | `/v1/demo` | demo principals, resource, and sandbox settings |
+| `POST` | `/v1/demo/sandbox` | FinanceAgent delegates ≤ $50 to AWS, for 2 hours, to a fresh agent, published to Arkiv |
+| `POST` | `/v1/demo/sandbox/{id}/revoke` | FinanceAgent revokes that sandbox mandate. Only sandbox mandates can be revoked here, so the shared dataset stays intact |
+| `GET` | `/v1/events` | live Arkiv entity events for our issuers (Server-Sent Events), relayed from the adapter |
+
+Sandbox writes are limited to 30 per hour in total, because each one spends testnet gas.
+
 ## Configuration
 
 | Variable | Meaning |
@@ -55,5 +68,7 @@ An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `ef
 | `TRUST_ANCHORS` | Who may issue root mandates: `kind:id=0xaddr[,0xaddr];…` |
 | `MANDATE_BACKEND` | `arkiv` (default) or `memory` (no Arkiv, for local trials) |
 | `HOST`, `PORT` | Listen address (default `127.0.0.1:8080`) |
+| `DEMO_KEYS` | `name=0xkey,…` synthetic demo keys (must include `finance-agent`); enables the sandbox |
+| `DEMO_RESOURCE` | The demo's resource (default `wallet:treasury-demo`) |
 
 The adapter's own settings (`ARKIV_PRIVATE_KEY`, `ARKIV_ISSUER_KEYS`, `ARKIV_API_KEY`, …) are in [`.env.example`](../.env.example) and [`apps/arkiv-adapter`](../apps/arkiv-adapter).

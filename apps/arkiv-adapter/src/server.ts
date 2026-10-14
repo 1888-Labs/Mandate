@@ -9,6 +9,7 @@
 //   GET  /v1/revocations?of=<id>:<issuer>&of=…    revocations of each mandate created by its issuer
 //   POST /v1/mandates                             body: signed mandate JSON
 //   POST /v1/revocations?retain_until=<unix>      body: signed revocation JSON
+//   GET  /v1/events                               live entity events (Server-Sent Events)
 //
 // Every document returned was created ($creator) by its own issuer's wallet;
 // copies created by anyone else are dropped. Writes are made from the
@@ -28,6 +29,7 @@ import {
   TooManyResults,
 } from "./arkiv.ts"
 import { InvalidDocument, parseMandate, parseRevocation, type Resource } from "./documents.ts"
+import type { liveEvents } from "./events.ts"
 
 const MAX_BODY_BYTES = 128 * 1024
 const HASH = /^0x[0-9a-f]{64}$/
@@ -131,7 +133,11 @@ function requireToken(req: IncomingMessage, token: string | undefined) {
   }
 }
 
-export function handler(arkiv: Arkiv, writeToken: string | undefined) {
+export function handler(
+  arkiv: Arkiv,
+  writeToken: string | undefined,
+  events?: ReturnType<typeof liveEvents>,
+) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://adapter")
     const path = url.pathname.replace(/\/+$/, "")
@@ -144,6 +150,11 @@ export function handler(arkiv: Arkiv, writeToken: string | undefined) {
           funder: arkiv.funder ?? null,
           issuers: arkiv.issuers,
         })
+      }
+
+      if (req.method === "GET" && path === "/v1/events") {
+        if (!events) throw new HttpError(404, "NOT_FOUND", "live events are not enabled")
+        return events.subscribe(res)
       }
 
       const byId = path.match(/^\/v1\/mandates\/([^/]+)$/)
@@ -246,7 +257,15 @@ if (import.meta.main) {
   })
   const port = Number(process.env.PORT ?? 8787)
   const host = process.env.HOST ?? "127.0.0.1"
-  createServer(handler(arkiv, process.env.ADAPTER_TOKEN || undefined)).listen(port, host, () => {
+  const { liveEvents } = await import("./events.ts")
+  const events = liveEvents({
+    projectId,
+    watched: arkiv.issuers,
+    apiKey: process.env.ARKIV_API_KEY || undefined,
+    wsUrl: process.env.ARKIV_WS_URL || undefined,
+  })
+  const server = createServer(handler(arkiv, process.env.ADAPTER_TOKEN || undefined, events))
+  server.listen(port, host, () => {
     console.log(`arkiv-adapter on http://${host}:${port}  project=${projectId}`)
     console.log(`funder ${arkiv.funder ?? "(none)"}`)
     console.log(

@@ -19,7 +19,8 @@ use tracing::{info, warn};
 
 use crate::api::{decision_json, denial_json, mandate_status_json, ApiError, AuthorizeBody};
 use crate::backend::{Backend, BackendError};
-use crate::snapshot;
+use crate::demo::{Demo, DemoError};
+use crate::{snapshot, web};
 
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 
@@ -27,6 +28,10 @@ pub struct AppState<B> {
     pub backend: B,
     pub anchors: TrustAnchors,
     pub clock: Clock,
+    /// Demo mode for the web UI (`DEMO_KEYS`), if enabled.
+    pub demo: Option<Demo>,
+    /// The adapter's live event stream, relayed at `/v1/events`.
+    pub events_url: Option<String>,
 }
 
 type Shared<B> = State<Arc<AppState<B>>>;
@@ -34,7 +39,14 @@ type ApiResult = Result<(StatusCode, Json<Value>), ApiError>;
 
 pub fn router<B: Backend>(state: AppState<B>) -> Router {
     Router::new()
+        .route("/", get(web::index))
+        .route("/app.js", get(web::app_js))
+        .route("/style.css", get(web::style))
         .route("/health", get(health::<B>))
+        .route("/v1/events", get(events::<B>))
+        .route("/v1/demo", get(demo_info::<B>))
+        .route("/v1/demo/sandbox", post(demo_sandbox::<B>))
+        .route("/v1/demo/sandbox/{id}/revoke", post(demo_revoke::<B>))
         .route("/v1/authorize", post(authorize_handler::<B>))
         .route("/v1/mandates", post(create_mandate::<B>))
         .route("/v1/mandates/{id}", get(get_mandate::<B>))
@@ -442,4 +454,116 @@ fn status_for(created: bool) -> StatusCode {
     } else {
         StatusCode::OK
     }
+}
+
+/// Relay the adapter's live Arkiv events (Server-Sent Events) to the browser.
+async fn events<B: Backend>(State(state): Shared<B>) -> Result<axum::response::Response, ApiError> {
+    let url = state.events_url.as_ref().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "live events need the Arkiv backend",
+        )
+    })?;
+    let upstream = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| unavailable(BackendError::Unavailable(format!("event stream: {e}"))))?;
+    axum::response::Response::builder()
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .header("x-accel-buffering", "no")
+        .body(axum::body::Body::from_stream(upstream.bytes_stream()))
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
+}
+
+fn demo_of<B>(state: &AppState<B>) -> Result<&Demo, ApiError> {
+    state.demo.as_ref().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "DEMO_DISABLED",
+            "demo mode is not enabled",
+        )
+    })
+}
+
+fn demo_error(e: DemoError) -> ApiError {
+    match e {
+        DemoError::RateLimited => ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "DEMO_RATE_LIMITED",
+            "the demo's hourly write budget is used up; try again later",
+        ),
+        DemoError::NoRootMandate => ApiError::new(
+            StatusCode::CONFLICT,
+            "NO_ROOT_MANDATE",
+            "FinanceAgent has no valid mandate from Alice to delegate from",
+        ),
+        DemoError::NotASandboxMandate => ApiError::new(
+            StatusCode::FORBIDDEN,
+            "NOT_A_SANDBOX_MANDATE",
+            "only sandbox mandates created by this demo can be revoked here",
+        ),
+        DemoError::Signing(m) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "SIGNING_FAILED", m)
+        }
+        DemoError::Backend(e) => unavailable(e),
+    }
+}
+
+async fn demo_info<B: Backend>(State(state): Shared<B>) -> ApiResult {
+    let demo = demo_of(&state)?;
+    let named = |list: Vec<(String, mandate_core::PrincipalId)>| -> Vec<Value> {
+        list.into_iter()
+            .map(|(name, address)| json!({ "name": name, "address": address }))
+            .collect()
+    };
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "resource": demo.resource,
+            "principals": named(demo.principals.clone()),
+            "sandboxAgents": named(demo.sandbox_agents()),
+            "backend": state.backend.name(),
+            "liveEvents": state.events_url.is_some(),
+            "explorer": "https://tiramisu.explorer.arkiv.network",
+            "sandbox": {
+                "maxAmount": crate::demo::SANDBOX_MAX_AMOUNT,
+                "lifetimeSeconds": crate::demo::SANDBOX_LIFETIME,
+            },
+        })),
+    ))
+}
+
+async fn demo_sandbox<B: Backend>(State(state): Shared<B>) -> ApiResult {
+    let demo = demo_of(&state)?;
+    let (name, mandate, published) = demo
+        .create_sandbox(&state.backend, &state.anchors, (state.clock)())
+        .await
+        .map_err(demo_error)?;
+    info!(mandate = %mandate.id, agent = %mandate.subject, "sandbox mandate delegated");
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "agent": { "name": name, "address": mandate.subject },
+            "mandate": mandate,
+            "published": published,
+        })),
+    ))
+}
+
+async fn demo_revoke<B: Backend>(State(state): Shared<B>, Path(id): Path<String>) -> ApiResult {
+    let demo = demo_of(&state)?;
+    let id = parse_id(&id)?;
+    let (mandate, _) = load(&state, &id).await?;
+    let (revocation, published) = demo
+        .revoke_sandbox(&state.backend, &mandate, (state.clock)())
+        .await
+        .map_err(demo_error)?;
+    info!(mandate = %id, revocation = %revocation.id, "sandbox mandate revoked");
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "revocation": revocation, "published": published })),
+    ))
 }

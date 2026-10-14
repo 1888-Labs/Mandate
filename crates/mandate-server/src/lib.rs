@@ -6,7 +6,9 @@ pub mod adapter;
 pub mod api;
 pub mod backend;
 pub mod config;
+pub mod demo;
 pub mod routes;
 pub mod snapshot;
+mod web;
 
 pub use routes::{router, AppState, Clock};

@@ -74,6 +74,8 @@ async fn start_server<B: Backend>(backend: B, anchors: TrustAnchors) -> Result<S
         backend,
         anchors,
         clock: Arc::new(now),
+        demo: None,
+        events_url: None,
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

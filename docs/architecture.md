@@ -66,7 +66,8 @@ mandate/
 │   ├── mandate-cli/      the `mandate` command
 │   └── mandate-server/   HTTP API; decides each request from a fresh Arkiv snapshot
 ├── apps/
-│   └── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents)
+│   ├── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents, live events)
+│   └── web/              the web UI (plain HTML/CSS/JS, embedded in mandate-server)
 ├── arkiv/
 │   ├── schema.md         entities, attributes, queries, what stays off Arkiv
 │   └── friction.md       real Arkiv development friction

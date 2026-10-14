@@ -144,6 +144,18 @@ publicClient
 
 All lookups return **every** match. The engine needs this: a revocation lookup that returned only one result could be shadowed by a forgery, and so could a mandate-by-ID lookup.
 
+## Live entity events
+
+The web UI updates the moment a mandate or revocation lands, with no refresh loop. The adapter opens **one** `watchEntityEvents` subscription over a **WebSocket** transport (`wss://rpc.tiramisu.db-chain.testnet.arkiv.network/<access key>`), with no `fromBlock`, so the node pushes logs instead of being polled ([`events.ts`](../apps/arkiv-adapter/src/events.ts)).
+
+Events cover the whole chain and carry only the entity key and owner, so:
+
+1. events whose owner isn't one of our issuer wallets are dropped immediately, with no lookup;
+2. for the rest, the adapter reads the entity once to confirm `project_id` and `entity_type`;
+3. it relays `{ kind, action, entityKey, creator, mandateId, txHash, blockNumber }` to browsers as Server-Sent Events.
+
+Measured on Tiramisu: the event for a newly published mandate reached the browser by the time the publishing request had returned.
+
 ## What stays off Arkiv
 
 Never written to Arkiv: private keys (issuers', agents' or the funder's), seed phrases, API secrets, LLM prompts or reasoning, tool arguments, or personal data. All principals are synthetic. Only signed authorization documents and the public metadata in the tables above. The CLI keeps development keys in a local `keys.json`, and the adapter's keys live in its git-ignored `.env`.

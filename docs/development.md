@@ -28,6 +28,7 @@ npm run test:arkiv-expiry   # entity expiry on Tiramisu (~4 minutes)
 ```bash
 scripts/demo-arkiv.sh             # CLI → mandate-server → adapter → Arkiv, all 7 demo steps, checked
 scripts/seed-arkiv.sh             # (re)publish the long-lived demo dataset to the main namespace
+scripts/run-local.sh              # the web app against the live dataset → http://127.0.0.1:8080
 cargo run -p finance-agent        # the prompt-injected agent demo, in memory
 ```
 
@@ -44,7 +45,7 @@ cargo run -p finance-agent        # the prompt-injected agent demo, in memory
 - [x] **M9** Arkiv adapter (TypeScript, Tiramisu testnet), [`arkiv/schema.md`](../arkiv/schema.md), [`arkiv/friction.md`](../arkiv/friction.md)
 - [x] **M10** Rust HTTP server, backed by Arkiv
 - [x] **M11** Demo agent: a prompt-injected agent blocked by Mandate ([`examples/finance-agent`](../examples/finance-agent))
-- [ ] **M12** Web UI
+- [x] **M12** Web UI: delegation graph, authorization tester, live revocation sandbox, live Arkiv events
 - [ ] Public deployment, demo video
 
 Out of scope for v0.1: tokens, NFTs, DAOs, a custom policy language, DIDs, custom chains, ZK proofs, multisig, production money movement.

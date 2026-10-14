@@ -41,6 +41,8 @@ fn demo_with<B: Backend>(backend: B) -> Demo {
         backend,
         anchors: TrustAnchors::new().trust(treasury(), address_of(&alice)),
         clock: clock_fn,
+        demo: None,
+        events_url: None,
     });
     Demo {
         app,
@@ -705,4 +707,127 @@ async fn backend_rejections_are_reported_not_hidden() {
     assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{b}");
     assert_eq!(b["error"], "PUBLISH_REJECTED");
     assert_eq!(b["backendError"], "ISSUER_KEY_UNAVAILABLE");
+}
+
+// --- Demo mode (web UI sandbox) ---
+
+fn demo_mode() -> (Demo, Router, SigningKey, SigningKey) {
+    let d = demo();
+    let spec = format!(
+        "alice={},finance-agent={}",
+        mandate_crypto::signing_key_to_hex(&d.alice),
+        mandate_crypto::signing_key_to_hex(&d.finance)
+    );
+    let demo_state = mandate_server::demo::Demo::from_keys(&spec, treasury()).unwrap();
+    let c = d.clock.clone();
+    let app = router(AppState {
+        backend: MemoryBackend::new(),
+        anchors: TrustAnchors::new().trust(treasury(), address_of(&d.alice)),
+        clock: Arc::new(move || c.load(Ordering::SeqCst)),
+        demo: Some(demo_state),
+        events_url: None,
+    });
+    let (alice, finance) = (d.alice.clone(), d.finance.clone());
+    (
+        Demo {
+            app: app.clone(),
+            ..d
+        },
+        app,
+        alice,
+        finance,
+    )
+}
+
+#[tokio::test]
+async fn sandbox_delegates_and_revokes_live() {
+    let (d, app, _, _) = demo_mode();
+    // The shared dataset: Alice → FinanceAgent (M1).
+    let (m1, m2) = d.setup().await;
+
+    let (s, info) = call(&app, "GET", "/v1/demo", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(info["principals"][1]["name"], "finance-agent");
+
+    let (s, sandbox) = call(&app, "POST", "/v1/demo/sandbox", None).await;
+    assert_eq!(s, StatusCode::CREATED, "{sandbox}");
+    assert_eq!(sandbox["mandate"]["parent"], json!(m1.id));
+    assert_eq!(sandbox["mandate"]["constraints"]["maxAmount"], 50);
+    let agent = sandbox["agent"]["address"].as_str().unwrap().to_string();
+    let id = sandbox["mandate"]["id"].as_str().unwrap().to_string();
+
+    let ask = |amount: u64| {
+        json!({
+            "subject": agent, "action": "transfer",
+            "resource": { "kind": "wallet", "id": "treasury-demo" },
+            "amount": amount, "recipient": "AWS",
+        })
+    };
+    let (_, r) = call(&app, "POST", "/v1/authorize", Some(ask(10))).await;
+    assert_eq!(r["decision"], "ALLOW", "{r}");
+    let (_, r) = call(&app, "POST", "/v1/authorize", Some(ask(60))).await;
+    assert_eq!(r["reason"], "AMOUNT_EXCEEDED");
+
+    let (s, _) = call(&app, "POST", &format!("/v1/demo/sandbox/{id}/revoke"), None).await;
+    assert_eq!(s, StatusCode::CREATED);
+    let (_, r) = call(&app, "POST", "/v1/authorize", Some(ask(10))).await;
+    assert_eq!(r["reason"], "REVOKED");
+
+    // The shared dataset can't be revoked from the UI.
+    let (s, b) = call(
+        &app,
+        "POST",
+        &format!("/v1/demo/sandbox/{}/revoke", m2.id),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (s, b["error"].as_str()),
+        (StatusCode::FORBIDDEN, Some("NOT_A_SANDBOX_MANDATE"))
+    );
+    assert_eq!(
+        d.ask(200, "AWS").await["decision"],
+        "ALLOW",
+        "InvoiceAgent unaffected"
+    );
+}
+
+#[tokio::test]
+async fn sandbox_needs_a_valid_root_mandate() {
+    let (_, app, _, _) = demo_mode();
+    let (s, b) = call(&app, "POST", "/v1/demo/sandbox", None).await;
+    assert_eq!(
+        (s, b["error"].as_str()),
+        (StatusCode::CONFLICT, Some("NO_ROOT_MANDATE"))
+    );
+}
+
+#[tokio::test]
+async fn demo_endpoints_are_off_by_default() {
+    let d = demo();
+    let (s, b) = call(&d.app, "GET", "/v1/demo", None).await;
+    assert_eq!(
+        (s, b["error"].as_str()),
+        (StatusCode::NOT_FOUND, Some("DEMO_DISABLED"))
+    );
+    let (s, _) = call(&d.app, "POST", "/v1/demo/sandbox", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = call(&d.app, "GET", "/v1/events", None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn serves_the_web_ui() {
+    let d = demo();
+    let res = d
+        .app
+        .clone()
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers()["content-type"]
+        .to_str()
+        .unwrap()
+        .starts_with("text/html"));
 }

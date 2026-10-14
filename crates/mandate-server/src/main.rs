@@ -5,6 +5,9 @@
 //!   ADAPTER_TOKEN   bearer token for adapter writes, if it requires one
 //!   TRUST_ANCHORS   who may issue root mandates: kind:id=0xaddr[,0xaddr];…
 //!   MANDATE_BACKEND `arkiv` (default) or `memory` (no Arkiv, for local trials)
+//!   DEMO_KEYS       synthetic demo keys (`name=0xkey,…`, needs finance-agent): enables
+//!                   the web UI's sandbox. Testnet demo principals only.
+//!   DEMO_RESOURCE   the demo's resource (default wallet:treasury-demo)
 //!   HOST, PORT      listen address (default 127.0.0.1:8080)
 //!   RUST_LOG        log filter (default info)
 
@@ -15,6 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mandate_server::adapter::AdapterBackend;
 use mandate_server::backend::{Backend, MemoryBackend};
 use mandate_server::config::parse_trust_anchors;
+use mandate_server::demo::Demo;
 use mandate_server::{router, AppState, Clock};
 use tracing::{error, info};
 
@@ -30,13 +34,31 @@ fn system_clock() -> Clock {
     })
 }
 
-async fn serve<B: Backend>(backend: B, addr: String) -> Result<(), String> {
+async fn serve<B: Backend>(
+    backend: B,
+    addr: String,
+    events_url: Option<String>,
+) -> Result<(), String> {
     let anchors = parse_trust_anchors(&env("TRUST_ANCHORS").unwrap_or_default())
         .map_err(|e| format!("TRUST_ANCHORS: {e}"))?;
+    let demo = match env("DEMO_KEYS") {
+        Some(keys) => {
+            let resource = env("DEMO_RESOURCE")
+                .unwrap_or_else(|| "wallet:treasury-demo".into())
+                .parse()
+                .map_err(|e| format!("DEMO_RESOURCE: {e}"))?;
+            let demo = Demo::from_keys(&keys, resource).map_err(|e| format!("DEMO_KEYS: {e}"))?;
+            info!("demo mode: sandbox delegations from {}", demo.finance());
+            Some(demo)
+        }
+        None => None,
+    };
     let app = router(AppState {
         backend,
         anchors,
         clock: system_clock(),
+        demo,
+        events_url,
     });
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -67,13 +89,14 @@ async fn main() -> ExitCode {
     let result = match env("MANDATE_BACKEND").as_deref().unwrap_or("arkiv") {
         "memory" => {
             info!("backend: in-memory (state is lost on restart, nothing goes to Arkiv)");
-            serve(MemoryBackend::new(), addr).await
+            serve(MemoryBackend::new(), addr, None).await
         }
         "arkiv" => {
             let url = env("ADAPTER_URL").unwrap_or_else(|| "http://127.0.0.1:8787".into());
             info!("backend: Arkiv via adapter at {url}");
+            let events_url = format!("{}/v1/events", url.trim_end_matches('/'));
             match AdapterBackend::new(url, env("ADAPTER_TOKEN")) {
-                Ok(backend) => serve(backend, addr).await,
+                Ok(backend) => serve(backend, addr, Some(events_url)).await,
                 Err(e) => Err(e.to_string()),
             }
         }

@@ -48,7 +48,9 @@ Three rules make this work:
 
 ## Try it
 
-You need [Rust](https://rustup.rs) (stable). For the Arkiv demo, also Node.js ≥ 22.18.
+**0. In the browser:** the live app (link above) shows the delegation graph straight from Arkiv, lets you check any action, and has a sandbox where FinanceAgent delegates to a fresh agent you can then revoke. Revocations show up live through Arkiv's entity events. To run it yourself: `scripts/run-local.sh`, then open http://127.0.0.1:8080.
+
+You need [Rust](https://rustup.rs) (stable). For anything on Arkiv, also Node.js ≥ 22.18.
 
 **1. A prompt-injected agent, stopped (no setup):**
 

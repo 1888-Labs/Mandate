@@ -18,6 +18,7 @@ npm start                         # http://127.0.0.1:8787
 | `GET /v1/mandates?parent=` | children of a mandate |
 | `GET /v1/mandates?subject=&active=1` | only unexpired mandates (range query on `expires_at`) |
 | `GET /v1/revocations?of=<mandate id>:<issuer>` | revocations of a mandate created by its issuer (repeat `of=` to batch) |
+| `GET /v1/events` | live entity events for our issuers (Server-Sent Events, from `watchEntityEvents` over WebSocket) |
 | `POST /v1/mandates` | publish a signed mandate (body: the exact JSON from `mandate export`) |
 | `POST /v1/revocations?retain_until=<unix>` | publish a signed revocation |
 

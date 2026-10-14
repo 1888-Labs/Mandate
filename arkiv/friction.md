@@ -151,6 +151,26 @@ With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9
 
 ---
 
+## 8. Tested path: live entity events over WebSocket (worked first time, with one thing to know)
+
+*2026-10-14 · `@arkiv-network/sdk` 0.8.1, viem 2.57.5, Node 24, Tiramisu*
+
+**Goal:** update the web UI the moment a mandate or revocation is published, without polling.
+
+**What we did:** `createPublicClient({ chain: tiramisu, transport: webSocket("wss://…/<access key>") })` and `watchEntityEvents({ onEvent })` with no `fromBlock`. Then we published a mandate from a different process.
+
+**Expected:** an `EntityCreated` event shortly after the transaction is mined.
+
+**Actual:** it arrived by the time the publishing HTTP request had returned (about 7 s round trip, almost all of it the transaction itself). The access key in the WebSocket path worked as documented.
+
+**One thing to know:** events are **chain-wide** and carry only `entityKey`, `owner` and block info, with no attributes. An app that wants "events in my namespace" has to filter by `owner` (cheap) and then `getEntity` each match to read its attributes. We filter on our issuers' wallets first, so the extra read only happens for our own entities.
+
+**Reproduce:** `scripts/run-local.sh`, open http://127.0.0.1:8080, then click "Create a sandbox agent". The event appears under "Live on Arkiv".
+
+**Suggestion:** an optional server-side filter on `watchEntityEvents` (by owner, or by an attribute like `project_id`) would save every subscriber the extra `getEntity` per event and the chain-wide traffic.
+
+---
+
 ## Positive notes
 
 - **`ExpirationTime.atDate(date)`** maps exactly onto a mandate's signed `expiresAt`. "Authorization expiry ≈ entity lifetime" took one line.
