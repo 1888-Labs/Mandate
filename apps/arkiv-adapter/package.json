@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "test:arkiv": "node --env-file-if-exists=.env test/arkiv-acceptance.ts",
-    "test:arkiv-expiry": "node --env-file-if-exists=.env test/arkiv-expiry.ts"
+    "test:arkiv-expiry": "node --env-file-if-exists=.env test/arkiv-expiry.ts",
+    "verify": "node --env-file-if-exists=.env scripts/verify.ts"
   },
   "dependencies": {
     "@arkiv-network/sdk": "0.8.1",
