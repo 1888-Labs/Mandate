@@ -31,7 +31,7 @@ A child can lower a limit, drop recipients or expire sooner. It can **never remo
 
 ## Revocation
 
-Revocation is a **separate signed document**, never an edit to the mandate. Only a mandate's own issuer can revoke it. Alice revokes M1; FinanceAgent revokes M2.
+Revocation is a **separate signed document**, never an edit to the mandate. Only a mandate's own issuer can revoke it. In the running example, M1 is Alice's mandate to FinanceAgent and M2 is FinanceAgent's mandate to InvoiceAgent: Alice can revoke M1, and FinanceAgent can revoke M2.
 
 While checking a request, the engine walks the whole chain from the agent's mandate up to the root. A valid revocation anywhere on that path denies the request:
 

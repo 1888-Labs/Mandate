@@ -22,8 +22,15 @@ AI agents now move money, call APIs and delegate work to *other agents*. A syste
 
 ## How it works
 
-```text
-Alice ──M1: ≤ $1000 to AWS, may delegate──▶ FinanceAgent ──M2: ≤ $300 to AWS──▶ InvoiceAgent
+A **mandate** is a signed grant of authority from one principal (a person or an agent) to another. In this example there are two:
+
+- **M1**: Alice lets FinanceAgent transfer up to $1000, to AWS only, and pass some of that on.
+- **M2**: FinanceAgent passes a smaller slice to InvoiceAgent: up to $300, to AWS only.
+
+```mermaid
+flowchart LR
+    alice(["Alice"]) -->|"M1: up to $1000, to AWS only, may delegate"| finance(["FinanceAgent"])
+    finance -->|"M2: up to $300, to AWS only"| invoice(["InvoiceAgent"])
 ```
 
 | InvoiceAgent asks to send | Mandate says | Why |
