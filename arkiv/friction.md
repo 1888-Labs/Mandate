@@ -1,6 +1,6 @@
 # Arkiv friction log
 
-Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu, recorded as they happened. Positive notes are at the end.
+Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu, recorded as they happened. Items 7 and 8 are tested paths that worked first time, documented the same way. Short positive notes are at the end.
 
 ---
 
@@ -17,6 +17,8 @@ Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu,
 **SDK/API details:** `jsonToPayload(json: object)` in `@arkiv-network/sdk/utils`. Reading back with `entity.toJson()` has the same problem in reverse.
 
 **Workaround:** the adapter never parses-then-stringifies a payload. It writes the request body bytes as received (`stringToBytes(raw)`) and splices the stored text into responses verbatim (`entity.toText()`). A unit test pins this with a real CLI-produced mandate.
+
+**Reproduce:** no network needed. `node -e 'console.log(String(JSON.parse("{\"n\":1791852453273973432}").n))'` prints `1791852453273973500` (Node 24.15). `jsonToPayload(JSON.parse(raw))` therefore stores a different document from `raw`. The adapter's guard is `npm test` in `apps/arkiv-adapter` ("stores and returns documents byte-for-byte (large nonce survives)").
 
 **Suggested improvement:** note in the `jsonToPayload` / `toJson` docs that JSON numbers above 2⁵³ aren't preserved. Consider a `rawJsonPayload(text)` helper, or a `toJson({ bigint: true })` option.
 
@@ -36,13 +38,15 @@ Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu,
 
 **Workaround:** create the revocation and, in the same `executeBatch`, transfer it to the burn address `0x…dEaD`. The new entity's key is computed beforehand with `getEntityNonce` + `predictEntityKey` and the same `salt`. The adapter checks that the key it predicted matches `createdEntities[0]`. **Verified on Tiramisu:** deleting the burn-owned revocation from the adapter wallet fails with *"entity … is owned by 0x…dEaD, not 0xcE64…"*, while an entity the adapter still owns can be deleted.
 
+**Reproduce:** with `@arkiv-network/sdk` 0.8.1 on Tiramisu, create an entity from wallet W with `flags: { readonly: true }`, then call `deleteEntity({ entityKey })` from W: the delete goes through. The workaround is checked by `npm run test:arkiv` (step 10: Alice's delete of her burn-owned revocation is rejected with *"owned by 0x…dEaD"*).
+
 **Suggested improvement:** an `undeletable` (or `appendOnly`) creation flag. Failing that, a documented "renounce ownership" operation, rather than relying on a well-known burn address.
 
 ---
 
 ## 3. Getting testnet funds: no faucet link in the SDK README
 
-*2026-10-13*
+*2026-10-13 · `@arkiv-network/sdk` 0.8.1 npm README*
 
 **Goal:** fund a fresh wallet to write the first entity.
 
@@ -50,7 +54,9 @@ Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu,
 
 **Actual:** the README says to "fund its address on the Arkiv Tiramisu testnet" and offers a shared sample private key ("funds may not always be available"), but gives no faucet URL. A web search for "Arkiv Tiramisu faucet" found nothing relevant. The faucet (`https://hub.arkiv.network/faucet`) was found via the arkiv.network homepage.
 
-**Workaround:** linked the faucet in our README and setup instructions.
+**Reproduce:** `grep -i faucet node_modules/@arkiv-network/sdk/README.md` in `apps/arkiv-adapter` (after `npm install`) finds nothing; the funding note is under the write example ("fund its address on the Arkiv Tiramisu testnet").
+
+**Workaround:** we link the faucet ourselves, in `.env.example` next to `ARKIV_PRIVATE_KEY` and in the README's setup steps.
 
 **Suggested improvement:** link the faucet from the npm README next to the write example. The shared sample key also nudges people towards using a shared, public private key; it might be better to drop it.
 
@@ -58,9 +64,15 @@ Real issues hit while building Mandate on `@arkiv-network/sdk` 0.8.1 / Tiramisu,
 
 ## 4. Minor: README install snippet shows an old version
 
-*2026-10-13*
+*2026-10-13 · `@arkiv-network/sdk` 0.8.1 npm README*
 
-The npm README for 0.8.1 shows the resulting dependency as `"@arkiv-network/sdk": "^0.6.0"`. It's harmless but confusing when checking you have the current release.
+**Expected:** the install section shows the version it installs.
+
+**Actual:** the npm README for 0.8.1 says `npm install @arkiv-network/sdk viem` "will update your `package.json` with a section like" `"@arkiv-network/sdk": "^0.6.0"`, `"viem": "^2.38.2"`. Our lockfile resolves `@arkiv-network/sdk` 0.8.1 and `viem` 2.57.5. It's harmless but confusing when checking you have the current release.
+
+**Reproduce:** `grep -n '0.6.0' node_modules/@arkiv-network/sdk/README.md` in `apps/arkiv-adapter` after `npm install`.
+
+**Suggested improvement:** generate the snippet from the package version at release time, or drop the version numbers from it.
 
 ---
 
@@ -82,7 +94,9 @@ The npm README for 0.8.1 shows the resulting dependency as `"@arkiv-network/sdk"
 
 Node's "happy eyeballs" gives each address only **250 ms** to connect. On a high-latency connection the TLS endpoint often takes longer, so every address times out. This is a Node default rather than an Arkiv bug, but it hits the default `http()` transport the SDK examples use, and viem's built-in retry didn't help.
 
-**Workaround:** the adapter calls `net.setDefaultAutoSelectFamilyAttemptTimeout(2000)` at startup and configures `http(url, { retryCount: 3, timeout: 30_000 })`.
+**Workaround:** the adapter calls `net.setDefaultAutoSelectFamilyAttemptTimeout(2000)` at startup and configures `http(url, { retryCount: 2, timeout: 30_000 })` ([`arkiv.ts`](../apps/arkiv-adapter/src/arkiv.ts)).
+
+**Reproduce:** on a high-latency link, from Node 24 with the SDK's default `http()` transport, send 25 sequential `eth_blockNumber` calls to `https://rpc.tiramisu.db-chain.testnet.arkiv.network`; then repeat with `node --network-family-autoselection-attempt-timeout=2000` or `--dns-result-order=ipv4first`. On a fast connection the default works, so this only shows up where connecting takes longer than 250 ms.
 
 **Suggested improvement:** a troubleshooting note in the SDK docs for `fetch failed` / `ETIMEDOUT` that mentions this setting would save time for anyone on mobile, satellite or far-away connections.
 
@@ -115,6 +129,8 @@ The server's message is excellent. But through the SDK we never saw it: viem's `
 - Spend less: one OR query per chain level for ancestors, one OR query for all revocations, and attributes fetched only when needed.
 
 With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9998`), and the full demo passes.
+
+**Reproduce:** run queries without `ARKIV_API_KEY` until the anonymous budget is spent (for us: a day of `npm run test:arkiv`, `npm run test:arkiv-expiry` and `scripts/demo-arkiv.sh`). Then a raw `curl` of an `arkiv_query` JSON-RPC call to the Tiramisu RPC returns the 429 above, while the same query through `createPublicClient({ transport: http() })` doesn't return for minutes. The fail-fast behaviour is pinned offline by `npm test` ("a 429 from the RPC fails fast instead of sleeping for Retry-After", against a fake RPC).
 
 **Suggested improvement:**
 - Mention access keys and the anonymous budget in the SDK README next to `createPublicClient`, with an `apiKey` option.
@@ -165,7 +181,7 @@ With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9
 
 **One thing to know:** events are **chain-wide** and carry only `entityKey`, `owner` and block info, with no attributes. An app that wants "events in my namespace" has to filter by `owner` (cheap) and then `getEntity` each match to read its attributes. We filter on our issuers' wallets first, so the extra read only happens for our own entities.
 
-**Reproduce:** `scripts/run-local.sh`, open http://127.0.0.1:8080, then click "Create a sandbox agent". The event appears under "Live on Arkiv".
+**Reproduce:** `scripts/seed-arkiv.sh` once, then `scripts/run-local.sh`, open http://127.0.0.1:8080 and create a sandbox delegation. The event appears in the "Live on Arkiv" feed.
 
 **Suggestion:** an optional server-side filter on `watchEntityEvents` (by owner, or by an attribute like `project_id`) would save every subscriber the extra `getEntity` per event and the chain-wide traffic.
 
@@ -175,7 +191,7 @@ With an access key the same queries succeed (`ratelimit: limit=9999, remaining=9
 
 - **`ExpirationTime.atDate(date)`** maps exactly onto a mandate's signed `expiresAt`. "Authorization expiry ≈ entity lifetime" took one line.
 - **`predictEntityKey` + `executeBatch`** make "create then transfer ownership" atomic, without a second round trip.
-- **Typed `select()` projections**: selecting only `key/owner/payload/attributes` keeps queries small, and the compile-time narrowing caught a missing field.
+- **Typed `select()` projections**: selecting only `key/owner/creator/payload` (plus `attributes` when needed) keeps queries small, and the compile-time narrowing caught a missing field.
 - **TypeScript source ships in the npm package.** Reading `src/` answered every question the README didn't (attribute types, flags, batch semantics) without leaving the editor.
 - **Read-only access needs no setup:** the public client queried Tiramisu on the first try (`scripts/probe.ts`).
 - **Expiry is prompt:** a 3-minute entity left live queries at most 19 s after its deadline, which is close enough that Arkiv expiry tracks authorization expiry in practice.
