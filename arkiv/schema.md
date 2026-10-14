@@ -111,11 +111,11 @@ Every query is `project_id = … AND entity_type = …` plus the filters below. 
 
 The Rust server builds each decision from batched lookups: candidates for the agent, one query per chain level for ancestors, and one for all revocations. That's three Arkiv queries for the demo's two-link chain. Verified on Tiramisu: `scripts/demo-arkiv.sh` runs all seven demo steps through these batched queries and checks each result. Queries select only `key`, `owner`, `creator` and `payload`; attributes are read only to compute `depth` when publishing. The RPC charges anonymous callers against a small budget, so the adapter sends `ARKIV_API_KEY` as `X-API-KEY` when set ([friction](friction.md#6-anonymous-query-budget-runs-out-and-the-sdk-then-appears-to-hang)).
 
-Example: candidates for InvoiceAgent's transfer check.
+Example: candidates for InvoiceAgent's transfer check (`find()` in [`arkiv.ts`](../apps/arkiv-adapter/src/arkiv.ts); `attributes: true` is added to the selection only when reading a parent's `depth` while publishing).
 
 ```ts
 publicClient
-  .select({ key: true, owner: true, payload: true, attributes: true })
+  .select({ key: true, owner: true, creator: true, payload: true })
   .where(and(
     eq("project_id", str("mandate-global-tour-2026")),
     eq("entity_type", str("mandate")),
@@ -150,17 +150,25 @@ The web UI updates the moment a mandate or revocation lands, with no refresh loo
 
 Events cover the whole chain and carry only the entity key and owner, so:
 
-1. events whose owner isn't one of our issuer wallets are dropped immediately, with no lookup;
+1. only `EntityCreated` and `EntityDeleted` are handled, and events whose owner isn't one of our issuer wallets are dropped immediately, with no lookup;
 2. for the rest, the adapter reads the entity once to confirm `project_id` and `entity_type`;
 3. it relays `{ kind, action, entityKey, creator, mandateId, txHash, blockNumber }` to browsers as Server-Sent Events.
 
+A deleted entity usually can't be read back, so step 2 can't check it. The adapter then relays the delete anyway, labelled `kind: "mandate"` with `mandateId: null` and the event's owner as `creator`: the namespace isn't confirmed for those. (A revocation can't be deleted, since the burn address owns it, so a relayed delete is a mandate an issuer deleted, or an unrelated entity from the same wallet.)
+
 Measured on Tiramisu: the event for a newly published mandate reached the browser by the time the publishing request had returned.
+
+## What the web UI shows
+
+The demo UI reads the same queries through `mandate-server`. Next to each mandate and revocation it shows the entity's `$owner`: the issuer's wallet for a mandate, and the burn address `0x…dEaD` for a revocation, which is how a viewer can see that the revocation can no longer be deleted. Addresses and live events link to the [Tiramisu explorer](https://tiramisu.explorer.arkiv.network).
 
 ## What stays off Arkiv
 
 Never written to Arkiv: private keys (issuers', agents' or the funder's), seed phrases, API secrets, LLM prompts or reasoning, tool arguments, or personal data. All principals are synthetic. Only signed authorization documents and the public metadata in the tables above. The CLI keeps development keys in a local `keys.json`, and the adapter's keys live in its git-ignored `.env`.
 
 ## Why Arkiv, and not…
+
+Without Arkiv, revocation stops meaning anything: a revocation forged by someone other than the issuer, or a real one an operator later deleted, would be indistinguishable from the truth. On Arkiv the creator is fixed by the chain and the revocation is owned by nobody.
 
 - **Postgres:** every verifier would have to trust the operator, who could rewrite grants, hide revocations, or show different consumers different answers. On Arkiv, each record's author is fixed on-chain (`$creator`), records are signed, and revocations can't be deleted by anyone, including us.
 - **IPFS:** content-addressed blobs, but Mandate needs *live, typed queries* ("active mandates for subject X, action Y, resource Z"; "revocations of M1") and lifetimes that match authorization expiry. IPFS has neither.
@@ -189,6 +197,28 @@ $ npm run test:arkiv-expiry
 ✓ gone from live queries (19s after its signed expiry)
 ```
 
+## Features deliberately not used
+
+- **`extendEntity`:** a mandate's lifetime is part of what its issuer signed, so extending the entity would keep a record alive past the authority it describes. Renewing means signing a new mandate (see [Live demo dataset](#live-demo-dataset)).
+- **`permissionlessExtension`:** for the same reason, nobody else should be able to keep our entities alive. Both entity types are created with `readonly: true` only.
+- **`createdBy()`:** it takes one address per query. The revocation lookup needs a different creator per mandate, so it puts `eq("$creator", addr(issuer))` inside each `or(...)` branch instead ([friction #7](friction.md#7-tested-path-per-mandate-creator-filters-inside-one-or-query-worked-first-time)).
+
+## Evidence that outlives expiry
+
+Every entity expires (the demo dataset on 2026-11-07), after which live queries stop returning it. The **creation transactions** stay on chain, and they carry the same proof of authorship, because each entity is created by its issuer's own wallet:
+
+1. Take a `txHash` from [`demo-dataset.json`](demo-dataset.json) (the dataset has one per mandate and one for the revocation).
+2. Open `https://tiramisu.explorer.arkiv.network/tx/<txHash>`, or ask the public RPC with [Foundry](https://getfoundry.sh)'s `cast`:
+
+   ```bash
+   cast tx 0x469214d527eadd59d442954fbb77b685f059d5d4045e96438b8a9d55b65f5338 \
+     --rpc-url https://rpc.tiramisu.db-chain.testnet.arkiv.network
+   ```
+
+3. The `from` field must be the issuer from the [Wallets](#wallets) table: Alice `0xa090f5ff…d2a4` for the root mandate above, FinanceAgent `0x21418e3a…44c4` for the other two mandates and for the revocation.
+
+While the entities are live, `npm run verify` in `apps/arkiv-adapter` shows the same thing from the entity side (`$creator`, `$owner`), with no key.
+
 ## Wallets
 
 | Address | Role |
@@ -213,11 +243,11 @@ Every entity expires: a mandate's expiry is part of what its issuer signed, so k
 
 Other demo runs (`scripts/demo-arkiv.sh`, the acceptance tests) use freshly generated issuers and the `-acceptance` namespace.
 
-Example from a live run of `scripts/demo-arkiv.sh` (sender of each transaction, read straight from the chain with `cast tx <hash> from`):
+Example from a live run of `scripts/demo-arkiv.sh` (sender of each transaction, read straight from the chain with `cast tx <hash> from`). That script creates fresh principals in a temporary `MANDATE_HOME` on every run and writes to the `-acceptance` namespace, so the Alice and FinanceAgent below are that run's own throwaway keys, not the demo dataset's wallets:
 
 | Transaction | Sent by |
 |---|---|
-| Alice grants M1 `0xd708d7c79092b217ac7214f1e306ce9c587328ab6df17095db3f2f68fb61154e` | Alice `0x2774E3a0319Cf2Ca7e8b6C8e96d028f811ED8d29` |
-| FinanceAgent delegates M2 `0x3c5c6ab3e8a81c49f70c0e3de628772d249920bc47ff385569d927b16e3b6813` | FinanceAgent `0x084CF611ed1531aE1239C63210E52a707B1d821C` |
-| Alice revokes M1 `0xbe68b2d3209873aca66b0d2d5a3d6bcbbbd283356506def02d7ef9e32e53b09e` | Alice `0x2774E3a0319Cf2Ca7e8b6C8e96d028f811ED8d29` |
+| Alice grants M1 `0xd708d7c79092b217ac7214f1e306ce9c587328ab6df17095db3f2f68fb61154e` | that run's Alice `0x2774E3a0319Cf2Ca7e8b6C8e96d028f811ED8d29` |
+| FinanceAgent delegates M2 `0x3c5c6ab3e8a81c49f70c0e3de628772d249920bc47ff385569d927b16e3b6813` | that run's FinanceAgent `0x084CF611ed1531aE1239C63210E52a707B1d821C` |
+| Alice revokes M1 `0xbe68b2d3209873aca66b0d2d5a3d6bcbbbd283356506def02d7ef9e32e53b09e` | that run's Alice `0x2774E3a0319Cf2Ca7e8b6C8e96d028f811ED8d29` |
 
