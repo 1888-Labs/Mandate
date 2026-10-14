@@ -1,0 +1,44 @@
+# FAQ [Short answers to common questions]
+
+## Is Mandate ready for production?
+
+Not yet. v0.1 was built for the Arkiv: Global Tour Stop hackathon and runs on Arkiv's Tiramisu testnet with demo identities. The core engine is well tested (signatures, attenuation, revocation and every attack in the [security model](/docs/security)), but it hasn't had an external audit.
+
+## How is this different from OAuth or API keys?
+
+OAuth scopes and API keys are **bearer tokens**: whoever holds one can use all of it, and there's no built-in way for an agent to pass on *part* of its access. Mandate adds:
+
+- **Attenuated delegation:** an agent can hand another agent a strictly smaller slice, enforced by the protocol.
+- **Fine-grained limits:** amounts, recipients, lifetimes, not just a scope name.
+- **Chain-wide revocation:** revoke one grant and everything delegated from it stops.
+- **Explained decisions:** every ALLOW or DENY says why, with evidence.
+
+They work well together: use OAuth or API keys to know *who* is calling, and Mandate to decide *what they may do*.
+
+## What happens if Arkiv is down?
+
+Mandate **fails closed**. If it can't read state, it answers `503 STATE_UNAVAILABLE` instead of a decision, and your tool should refuse to act. It never guesses ALLOW.
+
+## Do my agents need crypto wallets?
+
+Each principal is identified by an Ethereum-style address. Only principals that **issue** mandates (grant, delegate or revoke) need to sign, and on Arkiv they publish from their own wallet so `$creator` proves authorship. An agent that only acts just needs its address known to your tool.
+
+## What does it cost?
+
+Checking is a read and costs nothing on chain. Writing a mandate or a revocation is one Arkiv transaction paid by the issuer's wallet; on the testnet that is test GLM from the faucet.
+
+## What is public?
+
+Everything published to Arkiv is public: issuer and subject addresses, actions, resources, limits and recipients. Private keys, prompts, tool arguments and personal data are never published. If your limits or recipients are sensitive, use opaque identifiers. See the [Arkiv schema](/arkiv/schema).
+
+## Can someone delete a revocation to revive a mandate?
+
+No. Revocations are transferred to a burn address in the same transaction that creates them, so not even the issuer can delete one. This was [verified on Tiramisu](/docs/security).
+
+## Can an agent grant itself authority?
+
+No. A chain must start with a **trust anchor** for the resource, someone you've declared as its owner. Anything else is `UNTRUSTED_ROOT`.
+
+## Which languages can I use?
+
+Anything that speaks HTTP, via the [HTTP API](/docs/api). Rust apps can embed the engine as a [library](/docs/library), and there's a [CLI](/docs/cli) for people.

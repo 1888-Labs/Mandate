@@ -1,4 +1,5 @@
-/* Mandate docs: IBM Plex, as in the web app and the Arkiv explorer. */
+/* Mandate docs: the same brand tokens as the web app (apps/web/src/styles.css):
+   indigo primary, orange signal, warm off-white on near-black, IBM Plex. */
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/500.css";
 @import "@fontsource/ibm-plex-sans/600.css";
@@ -9,4 +10,57 @@
 :root {
   --vocs-font-family: "IBM Plex Sans", system-ui, sans-serif;
   --vocs-font-family-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --mx-indigo: light-dark(#181ea9, #7a80ea);
+  --mx-orange: #fe7446;
+  --mx-line: light-dark(#e5e7eb, #2e2e2e);
+  --mx-panel: light-dark(#ffffff, #161617);
+  --mx-muted: light-dark(#5d6170, #a19d96);
+}
+
+/* ---------- landing ---------- */
+.mx-section { max-width: 1080px; margin: 0 auto; padding: 32px 24px; }
+.mx-eyebrow { font: 500 12px var(--vocs-font-family-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mx-orange); margin-bottom: 14px; text-align: center; }
+.mx-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.mx-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mx-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px; padding: 20px;
+  border: 1px solid var(--mx-line); border-radius: 14px; background: var(--mx-panel);
+  color: inherit !important; text-decoration: none !important;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.mx-card::before { content: ""; position: absolute; inset: -1px 24px auto; height: 1px; background: linear-gradient(90deg, transparent, var(--mx-indigo), transparent); opacity: 0.8; }
+.mx-card:hover { border-color: var(--mx-indigo); translate: 0 -2px; }
+.mx-card b { font-size: 16px; }
+.mx-card span:not(.mx-icon) { color: var(--mx-muted); font-size: 14px; line-height: 1.55; }
+.mx-small b { font-size: 15px; }
+.mx-icon {
+  width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; margin-bottom: 6px;
+  color: var(--mx-orange); background: color-mix(in srgb, var(--mx-orange) 12%, transparent); font-weight: 700;
+}
+.mx-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border: 1px solid var(--mx-line); border-radius: 14px; background: var(--mx-panel); overflow: hidden; }
+.mx-step { display: flex; flex-direction: column; gap: 6px; padding: 20px; }
+.mx-step:nth-child(even) { border-left: 1px solid var(--mx-line); }
+.mx-step:nth-child(n + 3) { border-top: 1px solid var(--mx-line); }
+.mx-step span:not(.mx-n) { color: var(--mx-muted); font-size: 14px; line-height: 1.55; }
+.mx-n { font: 600 12px var(--vocs-font-family-mono); color: var(--mx-orange); }
+.mx-cta {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; margin: 24px auto 120px;
+  border: 1px solid var(--mx-line); border-radius: 18px; padding: 40px 24px;
+  background:
+    radial-gradient(60% 120% at 20% 0%, color-mix(in srgb, var(--mx-indigo) 18%, transparent), transparent),
+    radial-gradient(50% 120% at 90% 100%, color-mix(in srgb, var(--mx-orange) 14%, transparent), transparent),
+    var(--mx-panel);
+}
+.mx-cta b { font-size: 22px; letter-spacing: -0.01em; }
+.mx-cta span { color: var(--mx-muted); }
+.mx-button { margin-top: 10px; padding: 10px 18px; border-radius: 10px; background: var(--mx-indigo); color: #fff !important; font-weight: 600; text-decoration: none !important; }
+.mx-button:hover { filter: brightness(1.1); }
+
+@media (max-width: 860px) {
+  .mx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .mx-grid, .mx-grid-4, .mx-steps { grid-template-columns: 1fr; }
+  .mx-step:nth-child(even) { border-left: 0; }
+  .mx-step + .mx-step { border-top: 1px solid var(--mx-line); }
 }

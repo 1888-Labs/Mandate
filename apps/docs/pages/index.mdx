@@ -9,10 +9,48 @@ import { HomePage } from 'vocs'
   <HomePage.Logo />
   <HomePage.Tagline>The prompt is not the security boundary. Mandate is.</HomePage.Tagline>
   {/* Keep on one line: multi-line text inside JSX becomes a <p>, nested in Description's own <p>. */}
-  <HomePage.Description>Verifiable delegated authorization for AI agents, on Arkiv. Give an agent signed, narrowly scoped authority, let it delegate only a smaller slice, and revoke it any time. Every action gets an explained ALLOW or DENY.</HomePage.Description>
+  <HomePage.Description>Give an AI agent signed, narrowly scoped authority. Let it delegate only a smaller slice. Revoke it any time. Every action gets an explained ALLOW or DENY, decided live from Arkiv.</HomePage.Description>
   <HomePage.Buttons>
     <HomePage.Button href="/docs/quickstart" variant="accent">Get started</HomePage.Button>
-    <HomePage.Button href="/docs/introduction">What is Mandate?</HomePage.Button>
+    <HomePage.Button href="/docs/concepts">Concepts in 5 minutes</HomePage.Button>
     <HomePage.Button href="https://github.com/dicethedev/Mandate">GitHub</HomePage.Button>
   </HomePage.Buttons>
 </HomePage.Root>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">Why Mandate</div>
+  <div className="mx-grid">
+    <a className="mx-card" href="/docs/concepts#mandate"><span className="mx-icon">✍︎</span><b>Signed, scoped authority</b><span>Grant an agent exactly what it needs: an action, a resource, a limit, a list of recipients, a lifetime. Signed by the issuer, so it can't be forged.</span></a>
+    <a className="mx-card" href="/docs/concepts#delegation"><span className="mx-icon">↧</span><b>Delegation that only narrows</b><span>Agents can hand other agents a smaller slice, never a bigger one. Escalation is rejected before anything is stored.</span></a>
+    <a className="mx-card" href="/docs/concepts#revocation"><span className="mx-icon">✂︎</span><b>Revoke a whole branch</b><span>Take back one grant and everything delegated beneath it stops on the next check. No tokens to chase down.</span></a>
+    <a className="mx-card" href="/docs/deny-codes"><span className="mx-icon">?</span><b>Every decision explained</b><span>ALLOW with the full chain of evidence, or DENY with a stable reason code like AMOUNT_EXCEEDED or ANCESTOR_REVOKED.</span></a>
+    <a className="mx-card" href="/arkiv/schema"><span className="mx-icon">◆</span><b>Public, tamper-proof record</b><span>Mandates live on Arkiv, published from the issuer's own wallet. Revocations can't be deleted, not even by their issuer.</span></a>
+    <a className="mx-card" href="/docs/faq#what-happens-if-arkiv-is-down"><span className="mx-icon">⛌</span><b>Fails closed</b><span>If state can't be read, the answer is never a guess. Your tool refuses to act until Mandate can decide.</span></a>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">How it works</div>
+  <div className="mx-steps">
+    <div className="mx-step"><span className="mx-n">01</span><b>Grant</b><span>Alice lets FinanceAgent transfer up to $1,000, to AWS only, and pass some of that on.</span></div>
+    <div className="mx-step"><span className="mx-n">02</span><b>Delegate</b><span>FinanceAgent gives InvoiceAgent a smaller slice: up to $300.</span></div>
+    <div className="mx-step"><span className="mx-n">03</span><b>Check</b><span>Before paying, the payment tool asks Mandate. $200 → AWS is ALLOW; $700 is DENY.</span></div>
+    <div className="mx-step"><span className="mx-n">04</span><b>Revoke</b><span>Alice revokes her grant. Both agents lose their authority on the next check.</span></div>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">Built for</div>
+  <div className="mx-grid mx-grid-4">
+    <a className="mx-card mx-small" href="/docs/use-cases#payments-and-finance-agents"><b>Payment agents</b><span>Limits and approved vendors that a prompt injection can't talk past.</span></a>
+    <a className="mx-card mx-small" href="/docs/use-cases#tools-behind-mcp-servers"><b>MCP tools</b><span>Each connected agent can only use what it was granted.</span></a>
+    <a className="mx-card mx-small" href="/docs/use-cases#devops-and-infrastructure-agents"><b>DevOps agents</b><span>Staging yes, production only with a human's mandate.</span></a>
+    <a className="mx-card mx-small" href="/docs/use-cases#multi-agent-systems"><b>Multi-agent systems</b><span>Orchestrators hand sub-agents exactly the slice they need.</span></a>
+  </div>
+</div>
+
+<div className="mx-section mx-cta">
+  <b>Protect your first tool in 10 minutes.</b>
+  <span>One HTTP call before your tool acts. Works from any language.</span>
+  <a className="mx-button" href="/docs/integrate">Read the integration guide →</a>
+</div>

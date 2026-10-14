@@ -1,0 +1,30 @@
+# Deny codes [Every reason Mandate can say no]
+
+Every DENY carries exactly one stable `reason` code, a human-readable `message`, and the evidence behind it. Codes never change meaning, so it's safe to branch on them.
+
+| Code | What happened | Evidence fields | What to do |
+|---|---|---|---|
+| `NO_MANDATE` | The agent holds no mandate for this action and resource | | Grant one, or check the `subject` address |
+| `ACTION_NOT_ALLOWED` | The agent's mandate covers a different action | | Grant a mandate for this action |
+| `RESOURCE_NOT_ALLOWED` | The agent's mandate covers a different resource | | Grant a mandate for this resource |
+| `AMOUNT_EXCEEDED` | Over the effective limit of the chain, or no `amount` sent where a limit applies | `requestedAmount`, `maximumAmount` | Lower the amount, or ask the issuer for more |
+| `RECIPIENT_NOT_ALLOWED` | Recipient not in the allowed set, or no `recipient` sent where recipients are restricted | `allowedRecipients` | Use an allowed recipient |
+| `EXPIRED` | A mandate in the chain has expired, by the server's clock | `expiredMandateId` | Ask the issuer for a new mandate |
+| `REVOKED` | The agent's own mandate was revoked | `revokedMandateId`, `revocationId` | Stop; the issuer took authority back |
+| `ANCESTOR_REVOKED` | A mandate *above* the agent's was revoked | `revokedMandateId` (the highest one), `revocationId` | Stop; the whole branch was cut off |
+| `UNTRUSTED_ROOT` | The chain doesn't start with a trusted owner of the resource | | Someone tried to grant themselves authority |
+| `INVALID_DELEGATION` | A link escalates authority, a parent is missing, or the chain is deeper than 16 | | Treat as an attack or a bug |
+| `INVALID_SIGNATURE` | A mandate has a bad signature or a forged ID | | Treat as an attack |
+
+Every DENY also includes `mandateId` (the mandate that came closest) and as much of the `delegationPath` as could be resolved.
+
+:::info
+When an agent holds several mandates and none authorizes the request, the denial comes from the one that got **closest**. A forged record planted next to a real one can't hide the real reason.
+:::
+
+## Not a decision
+
+| HTTP status | Meaning |
+|---|---|
+| `503 STATE_UNAVAILABLE` | Mandate couldn't read state from Arkiv. **Treat as DENY.** |
+| `4xx` | The request is malformed or has unknown fields, such as a client-sent `timestamp` (expiry always uses the server's clock) |

@@ -1,0 +1,129 @@
+# Integrate in 10 minutes [Protect one of your own tools with Mandate]
+
+You'll add one check to a tool, so it only runs when the calling agent holds a valid mandate. The example is a payment tool, but the same shape works for any action.
+
+::::steps
+
+### Run Mandate
+
+Follow the [Quick start](/docs/quickstart) to start the API on `http://127.0.0.1:8080`. It already knows the demo agents and the `wallet:treasury-demo` resource, so you can test right away.
+
+### Describe the action
+
+Every check is one question: *may this **subject** perform this **action** on this **resource**, with these details?*
+
+```json
+{
+  "subject": "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",
+  "action": "transfer",
+  "resource": { "kind": "wallet", "id": "treasury-demo" },
+  "amount": 200,
+  "recipient": "AWS"
+}
+```
+
+`amount` and `recipient` are optional, but if the mandate sets a limit and you leave them out, the answer is DENY.
+
+### Ask before acting
+
+Wrap the tool so it calls `POST /v1/authorize` first and only runs on `ALLOW`:
+
+:::code-group
+
+```ts [TypeScript]
+const MANDATE = process.env.MANDATE_URL ?? "http://127.0.0.1:8080"
+
+export async function authorize(req: {
+  subject: string
+  action: string
+  resource: { kind: string; id: string }
+  amount?: number
+  recipient?: string
+}) {
+  const res = await fetch(`${MANDATE}/v1/authorize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  })
+  // Anything other than a clear ALLOW is a no, including Mandate being down.
+  if (!res.ok) throw new Error(`Mandate unavailable (${res.status}): refusing to act`)
+  const decision = await res.json()
+  if (decision.decision !== "ALLOW") throw new Error(`${decision.reason}: ${decision.message}`)
+  return decision // keep it: it's your audit evidence
+}
+
+// Your tool
+export async function sendPayment(agent: string, amount: number, recipient: string) {
+  const evidence = await authorize({
+    subject: agent,
+    action: "transfer",
+    resource: { kind: "wallet", id: "treasury-demo" },
+    amount,
+    recipient,
+  })
+  console.log("authorized by", evidence.mandateId, "via", evidence.delegationPath.join(" → "))
+  // …now actually send the payment
+}
+```
+
+```python [Python]
+import os, requests
+
+MANDATE = os.environ.get("MANDATE_URL", "http://127.0.0.1:8080")
+
+def authorize(**req):
+    res = requests.post(f"{MANDATE}/v1/authorize", json=req, timeout=10)
+    # Anything other than a clear ALLOW is a no, including Mandate being down.
+    if not res.ok:
+        raise PermissionError(f"Mandate unavailable ({res.status_code}): refusing to act")
+    decision = res.json()
+    if decision["decision"] != "ALLOW":
+        raise PermissionError(f'{decision["reason"]}: {decision["message"]}')
+    return decision  # keep it: it's your audit evidence
+
+def send_payment(agent: str, amount: int, recipient: str):
+    evidence = authorize(
+        subject=agent,
+        action="transfer",
+        resource={"kind": "wallet", "id": "treasury-demo"},
+        amount=amount,
+        recipient=recipient,
+    )
+    print("authorized by", evidence["mandateId"])
+    # …now actually send the payment
+```
+
+```rust [Rust]
+// Embed the engine directly (see the Rust library page):
+// mandate_core::authorize(request, store, verifier, trust_anchors)
+let decision = mandate_core::authorize(&request, &store, &EthereumVerifier, &anchors);
+```
+
+:::
+
+### Try it
+
+```python
+# InvoiceAgent holds "≤ $300 → AWS"
+send_payment(invoice_agent, 200, "AWS")           # ✅ runs
+send_payment(invoice_agent, 700, "AWS")           # ❌ AMOUNT_EXCEEDED
+send_payment(invoice_agent, 100, "RandomVendor")  # ❌ RECIPIENT_NOT_ALLOWED
+```
+
+Then open the web app, revoke a sandbox mandate, and watch the same call start failing with `REVOKED`.
+
+::::
+
+## Rules of thumb
+
+:::warning
+**Put the check in the tool, not in the agent.** The agent's prompt can be hijacked; the tool's code can't. And **fail closed**: if Mandate can't be reached it answers `503 STATE_UNAVAILABLE`, and your tool must treat that as a no.
+:::
+
+- **Know who is calling.** Mandate decides what an identity may do. Your tool is responsible for knowing which agent is calling (its session, API key, or signed request) and passing that address as `subject`.
+- **Keep the evidence.** Log `mandateId` and `delegationPath` with every action you take: that's your audit trail.
+- **Show the reason.** Deny codes are stable, so you can map them to friendly messages. See [Deny codes](/docs/deny-codes).
+
+## Granting authority
+
+The check above is all a tool needs. To create mandates for your own agents and resources, use the [CLI](/docs/cli) (`mandate grant`, `mandate delegate`, `mandate revoke`), the [Rust library](/docs/library), or post signed mandates to the [HTTP API](/docs/api).

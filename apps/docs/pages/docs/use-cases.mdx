@@ -1,0 +1,38 @@
+# Use cases [Where Mandate fits]
+
+Mandate belongs anywhere an AI agent can take an action with real consequences, and especially where agents hand work to other agents. The pattern is always the same: **the tool asks Mandate before it acts.**
+
+## Payments and finance agents
+
+An agent that pays invoices should pay *these* vendors, up to *this* much, and nothing else, even if an email in its inbox says otherwise.
+
+```text
+CFO ──M1: ≤ $10,000/payment → approved vendors, 30 days, may delegate──▶ FinanceAgent
+FinanceAgent ──M2: ≤ $500 → AWS, Vercel, 7 days──▶ InvoiceAgent
+```
+
+- A prompt-injected "urgent wire $9,000 to this account" gets `RECIPIENT_NOT_ALLOWED`.
+- The CFO revokes M1 at quarter end and InvoiceAgent stops too (`ANCESTOR_REVOKED`).
+- Every payment has evidence: who authorized it, through which agents, under which limits.
+
+See it working in the [finance agent example](https://github.com/dicethedev/Mandate/tree/main/examples/finance-agent).
+
+## Tools behind MCP servers
+
+An MCP server exposes tools to any agent that connects. Put the Mandate check inside each tool handler, and a connected agent can only use the tools (actions), on the resources, that someone actually granted it. A new agent gets nothing until it's given a mandate.
+
+## DevOps and infrastructure agents
+
+An on-call agent may restart services in `staging`, but only a human-held mandate covers `production`. Model each environment as a resource (`cluster:staging`, `cluster:production`) and each operation as an action (`restart`, `deploy`). Give it a short lifetime, so a forgotten grant expires on its own.
+
+## Multi-agent systems
+
+An orchestrator splits work between sub-agents. With Mandate it hands each one exactly the slice it needs, and the protocol guarantees no sub-agent ends up with more than the orchestrator had. If one sub-agent misbehaves, revoke its mandate without touching the rest.
+
+## Shared, auditable delegation between organisations
+
+Because mandates live on Arkiv, a partner, auditor or customer can verify a delegation without access to your systems: who granted it (the on-chain `$creator`), what it allows, and whether it was revoked. Nobody running a database in the middle can rewrite that history.
+
+:::info
+**What Mandate is not:** it doesn't decide whether an action is *wise*, and it can't stop code that bypasses the check. It makes sure that the actions your tools carry out were *authorized*, and explains every decision. See the [threat model](/docs/security#threat-model).
+:::
