@@ -12,7 +12,7 @@ Give an AI agent narrowly scoped, signed authority. Let it hand a *smaller* piec
 | **Demo video** | *coming soon* |
 | **Arkiv schema** | [`arkiv/schema.md`](arkiv/schema.md) |
 | **Arkiv friction report** | [`arkiv/friction.md`](arkiv/friction.md) |
-| **Docs** | [`docs/`](#documentation) |
+| **Docs site** | *coming soon* (built with [Vocs](https://vocs.dev), from [`apps/docs`](apps/docs)) · [`docs/`](#documentation) on GitHub |
 
 ---
 

@@ -35,6 +35,17 @@ npm run build      # type-check and build into dist/
 npm test           # unit tests (vitest)
 ```
 
+## Docs site
+
+Built with [Vocs](https://vocs.dev), the framework behind viem.sh, in [`apps/docs`](../apps/docs). The pages come from this repository's `docs/` and `arkiv/` markdown: `npm run sync` copies them in and rewrites their links, so these files stay the single source of truth.
+
+```bash
+cd apps/docs
+npm install
+npm run dev        # sync, then a live-reloading docs server
+npm run build      # sync, then a static site in dist/public
+```
+
 ## End to end
 
 ```bash

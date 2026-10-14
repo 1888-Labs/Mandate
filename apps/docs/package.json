@@ -1,0 +1,31 @@
+{
+  "name": "@mandate/docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mandate documentation site, built with Vocs.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "dev": "npm run sync && vocs dev",
+    "build": "npm run sync && vocs build",
+    "preview": "vocs preview"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "mermaid": "11.17.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-server-dom-webpack": "19.3.0",
+    "vocs": "2.10.2",
+    "waku": "1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}

@@ -1,0 +1,4 @@
+
+# Synced from the repository by scripts/sync.mjs; edit docs/ and arkiv/ instead.
+pages/docs/*.md
+pages/arkiv/*.md

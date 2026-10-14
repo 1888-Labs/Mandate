@@ -1,0 +1,91 @@
+# Quick start [Run Mandate in a few minutes]
+
+You need [Rust](https://rustup.rs) (stable). For anything on Arkiv, also Node.js 22.18 or later.
+
+```bash
+git clone https://github.com/dicethedev/Mandate
+cd Mandate
+```
+
+## 1. Watch a prompt-injected agent get stopped
+
+No setup, no network:
+
+```bash
+cargo run -p finance-agent
+```
+
+The agent obeys an injected invoice email telling it to send $900, then $250 to an attacker. Its payment tool asks Mandate first, so only the real $200 payment goes through.
+
+## 2. Run the web app against the live Arkiv dataset
+
+```bash
+cp .env.example apps/arkiv-adapter/.env   # add a funded ARKIV_PRIVATE_KEY and an ARKIV_API_KEY
+(cd apps/arkiv-adapter && npm install)
+scripts/seed-arkiv.sh                     # once: publish the demo dataset
+scripts/run-local.sh                      # then open http://127.0.0.1:8080
+```
+
+The app shows the delegation graph straight from Arkiv, lets you check any action, and has a sandbox where you can create a delegation and revoke it live.
+
+## 3. Check an action from code
+
+Any language can ask Mandate over HTTP:
+
+:::code-group
+
+```bash [curl]
+curl -s http://127.0.0.1:8080/v1/authorize -H 'content-type: application/json' -d '{
+  "subject": "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",
+  "action": "transfer",
+  "resource": { "kind": "wallet", "id": "treasury-demo" },
+  "amount": 700, "recipient": "AWS" }'
+```
+
+```ts [TypeScript]
+const res = await fetch("http://127.0.0.1:8080/v1/authorize", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    subject: "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772", // InvoiceAgent
+    action: "transfer",
+    resource: { kind: "wallet", id: "treasury-demo" },
+    amount: 700,
+    recipient: "AWS",
+  }),
+})
+const decision = await res.json()
+if (decision.decision !== "ALLOW") throw new Error(decision.message)
+```
+
+```python [Python]
+import requests
+
+decision = requests.post("http://127.0.0.1:8080/v1/authorize", json={
+    "subject": "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",  # InvoiceAgent
+    "action": "transfer",
+    "resource": {"kind": "wallet", "id": "treasury-demo"},
+    "amount": 700,
+    "recipient": "AWS",
+}).json()
+assert decision["decision"] == "ALLOW", decision["message"]
+```
+
+:::
+
+```json [Response]
+{
+  "decision": "DENY",
+  "reason": "AMOUNT_EXCEEDED",
+  "message": "Requested 700 exceeds the delegated maximum of 300.",
+  "requestedAmount": 700,
+  "maximumAmount": 300
+}
+```
+
+## Next steps
+
+- [HTTP API](/docs/api): every endpoint and field
+- [CLI](/docs/cli): grant, delegate and revoke from a terminal
+- [Rust library](/docs/library): embed the engine
+- [Arkiv schema](/arkiv/schema): read Mandate's data straight from Arkiv

@@ -1,0 +1,53 @@
+# What is Mandate? [Signed, narrowing, revocable authority for AI agents]
+
+AI agents now move money, call APIs and delegate work to *other agents*. A system prompt that says "never spend more than $300" isn't a security boundary: prompt injection, bugs and confused agents talk past it.
+
+Mandate answers the question nobody else can: **was this agent actually allowed to do this, who allowed it, and has that been revoked?**
+
+## How it works
+
+A **mandate** is a signed grant of authority from one principal (a person or an agent) to another.
+
+```mermaid
+flowchart LR
+    alice(["Alice"]) -->|"M1: up to $1000, to AWS only, may delegate"| finance(["FinanceAgent"])
+    finance -->|"M2: up to $300, to AWS only"| invoice(["InvoiceAgent"])
+```
+
+| InvoiceAgent asks to send | Mandate says | Why |
+|---|---|---|
+| $200 → AWS | ✅ ALLOW | Within M2, and M2 only narrows M1 |
+| $700 → AWS | ❌ `AMOUNT_EXCEEDED` | Its limit is $300 |
+| $100 → RandomVendor | ❌ `RECIPIENT_NOT_ALLOWED` | Only AWS is allowed |
+| *(Alice revokes M1)* $100 → AWS | ❌ `ANCESTOR_REVOKED` | M2's authority came from M1 |
+
+Three rules make this work:
+
+1. **Authority only narrows.** A delegated mandate can lower limits, drop recipients or expire sooner, never more than its parent allows. ([Protocol](/docs/protocol))
+2. **Everything is signed.** Each mandate and revocation is signed by its issuer with a standard Ethereum key, and the engine re-verifies the whole chain on every check.
+3. **Revoking a parent cuts off everything below it**, instantly.
+
+## Where it fits
+
+The check goes **inside the tool that performs the action**: a payment API, an MCP server, a deploy pipeline. The tool asks Mandate before acting, and only proceeds on ALLOW:
+
+```text
+Agent → Tool (payments, GitHub, DB…) → Mandate: "may this agent do this?" → ALLOW → execute
+                                                                           → DENY  → refuse, with the reason
+```
+
+Not in the agent or its prompt: the agent may be compromised. See it in action in the [finance agent demo](https://github.com/dicethedev/Mandate/tree/main/examples/finance-agent), where a prompt-injected agent tries to send $900 and only the real $200 payment goes through.
+
+## Why Arkiv
+
+Mandate needs a public record of who granted what, and what was revoked, that **no single operator controls**.
+
+- **Authorship is on-chain.** Each mandate is an Arkiv entity *created by its issuer's own wallet*, so Arkiv's immutable `$creator` *is* the person who granted the authority.
+- **Revocations can't be deleted.** They're handed to a burn address in the same transaction that creates them.
+- **Lifetimes match authorization.** Each entity expires when its mandate does, and typed attributes make "active mandates for this agent" a direct query.
+
+What stays off Arkiv: private keys, prompts, tool arguments and personal data. Details in the [Arkiv schema](/arkiv/schema).
+
+:::info
+Mandate v0.1 was built for the **Arkiv: Global Tour Stop** hackathon (Security and Open Source tracks). It runs on Arkiv's Tiramisu testnet with synthetic demo identities: ready for prototypes and demos, not yet for production.
+:::

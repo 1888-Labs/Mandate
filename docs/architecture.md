@@ -67,7 +67,8 @@ mandate/
 │   └── mandate-server/   HTTP API; decides each request from a fresh Arkiv snapshot
 ├── apps/
 │   ├── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents, live events)
-│   └── web/              the web UI (React + TypeScript + Vite), served by mandate-server
+│   ├── web/              the web UI (React + TypeScript + Vite), served by mandate-server
+│   └── docs/             the documentation site (Vocs), built from docs/ and arkiv/
 ├── arkiv/
 │   ├── schema.md         entities, attributes, queries, what stays off Arkiv
 │   └── friction.md       real Arkiv development friction
