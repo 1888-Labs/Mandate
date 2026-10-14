@@ -1,6 +1,6 @@
 # Quick start [Run Mandate in a few minutes]
 
-You need [Rust](https://rustup.rs) (stable). For anything on Arkiv, also Node.js 22.18 or later.
+You need [Rust](https://rustup.rs) (stable, with `cargo`). For anything on Arkiv, also Node.js 22.18 or later with `npm`, `python3` and `curl` (the scripts use them).
 
 ```bash
 git clone https://github.com/1888-Labs/Mandate
@@ -17,16 +17,19 @@ cargo run -p finance-agent
 
 The agent obeys an injected invoice email telling it to send $900, then $250 to an attacker. Its payment tool asks Mandate first, so only the real $200 payment goes through.
 
-## 2. Run the web app against the live Arkiv dataset
+## 2. Run the web app against Arkiv
 
 ```bash
-cp .env.example apps/arkiv-adapter/.env   # add a funded ARKIV_PRIVATE_KEY and an ARKIV_API_KEY
+cp .env.example apps/arkiv-adapter/.env   # set ARKIV_PRIVATE_KEY (fund it at https://hub.arkiv.network/faucet)
+                                          # and ARKIV_API_KEY (https://hub.arkiv.network/api-keys)
 (cd apps/arkiv-adapter && npm install)
-scripts/seed-arkiv.sh                     # once: publish the demo dataset
+scripts/seed-arkiv.sh                     # once: create demo principals and publish a chain from them
 scripts/run-local.sh                      # then open http://127.0.0.1:8080
 ```
 
-The app shows the delegation graph straight from Arkiv, lets you check any action, and has a sandbox where you can create a delegation and revoke it live.
+`seed-arkiv.sh` generates your own demo keys in `.mandate-demo/` (git-ignored), publishes an Alice → FinanceAgent → InvoiceAgent chain and a revoked LegacyBot mandate from them, and rewrites `arkiv/demo-dataset.json`. `run-local.sh` refuses to start until it has run. The app reads that chain from Arkiv and lets you check actions and revoke a sandbox delegation live.
+
+To only read the published dataset, with no wallet or key: `cd apps/arkiv-adapter && npm install && npm run verify`.
 
 ## 3. Check an action from code
 
