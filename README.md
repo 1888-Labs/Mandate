@@ -1,6 +1,46 @@
-# Mandate
+<br/>
 
-**Verifiable delegated authorization for AI agents, on [Arkiv](https://arkiv.network).**
+<p align="center">
+  <a href="https://github.com/dicethedev/Mandate">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
+      <img alt="Mandate" src=".github/logo-light.svg" width="auto" height="80">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Verifiable delegated authorization for AI agents, on <a href="https://arkiv.network">Arkiv</a>.
+</p>
+
+<p align="center">
+  <a href="LICENSE">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/license-MIT-21262d?labelColor=21262d&style=flat">
+      <img src="https://img.shields.io/badge/license-MIT-f6f8fa?labelColor=f6f8fa&style=flat" alt="license: MIT">
+    </picture>
+  </a>
+  <a href="https://arkiv.network">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/built%20on-Arkiv-21262d?labelColor=21262d&style=flat">
+      <img src="https://img.shields.io/badge/built%20on-Arkiv-f6f8fa?labelColor=f6f8fa&style=flat" alt="built on: Arkiv">
+    </picture>
+  </a>
+  <a href="arkiv/schema.md">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/network-Tiramisu%20testnet-21262d?labelColor=21262d&style=flat">
+      <img src="https://img.shields.io/badge/network-Tiramisu%20testnet-f6f8fa?labelColor=f6f8fa&style=flat" alt="network: Tiramisu testnet">
+    </picture>
+  </a>
+  <a href="crates/mandate-core">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/engine-Rust-21262d?labelColor=21262d&style=flat">
+      <img src="https://img.shields.io/badge/engine-Rust-f6f8fa?labelColor=f6f8fa&style=flat" alt="engine: Rust">
+    </picture>
+  </a>
+</p>
+
+<br/>
 
 Give an AI agent narrowly scoped, signed authority. Let it hand a *smaller* piece to another agent. Revoke it any time. Every action gets an answer that explains itself: **ALLOW** or **DENY**, with the reason and the chain of authority behind it.
 
