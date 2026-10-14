@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { Hex, MandateStatus } from "../types"
-import { layout, pairKey, pathPairs } from "./layout"
+import { pairKey, pathPairs, tree } from "./tree"
 
 const a = (n: number) => `0x${String(n).repeat(40).slice(0, 40)}` as Hex
 const edge = (issuer: Hex, subject: Hex): MandateStatus => ({
@@ -23,20 +23,22 @@ const edge = (issuer: Hex, subject: Hex): MandateStatus => ({
   },
 })
 
-describe("layout", () => {
-  it("places principals by depth with parents centred on children", () => {
-    const placed = layout([edge(a(1), a(2)), edge(a(2), a(3)), edge(a(2), a(4))])
-    const at = (n: number) => placed.find((p) => p.address === a(n))!
-    expect(at(1).depth).toBe(0)
-    expect(at(2).depth).toBe(1)
-    expect(at(3).depth).toBe(2)
-    expect(at(2).x).toBe((at(3).x + at(4).x) / 2)
-    expect(at(1).y).toBeLessThan(at(2).y)
+/** `depth:issuer>subject`, using each address's repeated digit. */
+const shape = (rows: ReturnType<typeof tree>) =>
+  rows.map((r) => `${r.depth}:${r.entry.mandate.issuer[2]}>${r.entry.mandate.subject[2]}`)
+
+describe("tree", () => {
+  it("lists each grant followed by what is delegated beneath it", () => {
+    const rows = tree([edge(a(2), a(4)), edge(a(1), a(2)), edge(a(2), a(3))])
+    expect(shape(rows)).toEqual(["0:1>2", "1:2>4", "1:2>3"])
   })
 
-  it("survives cycles in hostile data", () => {
-    const placed = layout([edge(a(1), a(2)), edge(a(2), a(3)), edge(a(3), a(2))])
-    expect(placed).toHaveLength(3)
+  it("survives cycles in hostile data and still lists every mandate", () => {
+    expect(tree([edge(a(1), a(2)), edge(a(2), a(3)), edge(a(3), a(2))])).toHaveLength(3)
+  })
+
+  it("lists a pure cycle that has no root", () => {
+    expect(tree([edge(a(1), a(2)), edge(a(2), a(1))])).toHaveLength(2)
   })
 
   it("turns a delegation path into edge keys", () => {

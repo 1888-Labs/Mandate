@@ -24,8 +24,11 @@ export type Mandate = {
   signature: Hex
 }
 
-/** Where a document lives on Arkiv, and its immutable `$creator`. */
-export type ArkivRef = { entityKey: Hex | null; creator: Hex | null }
+/**
+ * Where a document lives on Arkiv: its immutable `$creator`, and its `$owner`
+ * (the burn address once nobody may change or delete it).
+ */
+export type ArkivRef = { entityKey: Hex | null; creator: Hex | null; owner?: Hex | null }
 
 /** A mandate with its current status: `ACTIVE` or a deny code. */
 export type MandateStatus = {

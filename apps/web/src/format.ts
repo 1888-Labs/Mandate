@@ -48,11 +48,9 @@ export function explorerUrl(base: string, kind: "entity" | "tx" | "address", val
   return ok ? `${base}/${kind}/${value}` : null
 }
 
-const COLORS = ["#8b7bff", "#22c55e", "#0ea5e9", "#f59e0b", "#ec4899", "#14b8a6", "#a855f7"]
+/** Arkiv's burn address: an entity owned by it can never be changed or deleted. */
+export const BURN_ADDRESS = "0x000000000000000000000000000000000000dead"
 
-/** A stable colour per name. */
-export function colorFor(name: string): string {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  return COLORS[h % COLORS.length] ?? COLORS[0]!
+export function isBurn(owner: string | null | undefined): boolean {
+  return owner?.toLowerCase() === BURN_ADDRESS
 }
