@@ -60,6 +60,24 @@ Give an AI agent narrowly scoped, signed authority. Let it hand a *smaller* piec
 
 AI agents now move money, call APIs and delegate work to *other agents*. A system prompt that says "never spend more than $300" isn't a security boundary: prompt injection, bugs and confused agents talk past it. Nobody can answer: *was this agent actually allowed to do this, who allowed it, and has that been revoked?*
 
+### Why Security
+
+Today the answer lives in the operator's database, and three people are misled by it:
+
+- **The user whose agent overspends.** Alice told her agent "$300, AWS only", but the limit is a line in a prompt or a row someone else can edit. A prompt-injected agent pays whoever the email says.
+- **The payee or verifier** deciding whether to accept an agent's request. They can only ask the operator what the agent may do, and must believe the answer.
+- **The auditor** reviewing an incident. They see the revocation history the operator shows them, which the operator could have edited or deleted afterwards.
+
+What changes from the first mandate:
+
+- Every grant and revocation is an Arkiv entity created by **the issuer's own wallet**, so its on-chain `$creator` is the issuer. Mandate only accepts a document whose `$creator` equals the issuer named in the signed payload: the adapter checks it ([`arkiv.ts`](apps/arkiv-adapter/src/arkiv.ts) `issuerAuthored`, and `$creator` inside the revocation query), and the Rust server checks it again ([`snapshot.rs`](crates/mandate-server/src/snapshot.rs)). A writable `issuer` field proves nothing; `$creator` can't be forged.
+- Revocations are created `readonly` and handed to the burn address `0x…dEaD` in the same transaction, so nobody, not even the issuer or us, can delete one.
+- Every check re-verifies signatures, the delegation chain and expiry, and returns a reason code, so a payee or auditor can see *why* (`AMOUNT_EXCEEDED`, `ANCESTOR_REVOKED`, …), not just yes or no.
+
+### Why Open Source
+
+Mandate's state is a public dataset, not a private API. Anyone can read it **without a key or our permission**: query Arkiv for `project_id = "mandate-global-tour-2026"` (`npm run verify` below does exactly that). The data contract is versioned and documented in [`arkiv/schema.md`](arkiv/schema.md): every entity carries `version = "mandate/0.1"` and the full signed document as its payload, so another team can verify mandates with their own code, build a dashboard or an auditor's tool, or run their own adapter. The code is [MIT](LICENSE), and the [CLI](docs/cli.md) and [Rust library](docs/library.md) work on their own, without our server.
+
 ## How it works
 
 A **mandate** is a signed grant of authority from one principal (a person or an agent) to another. In this example there are two:
@@ -88,11 +106,9 @@ Three rules make this work:
 
 ## Try it
 
-**0. In the browser:** the live app (link above) shows the delegation graph straight from Arkiv, lets you check any action, and has a sandbox where FinanceAgent delegates to a fresh agent you can then revoke. Revocations show up live through Arkiv's entity events. To run it yourself: `scripts/run-local.sh`, then open http://127.0.0.1:8080.
+**Prerequisites:** [Rust](https://rustup.rs) (stable, with `cargo`) for everything. For anything on Arkiv, also Node.js ≥ 22.18 with `npm` (the adapter runs its TypeScript directly), `python3` and `curl` (used by the scripts in `scripts/`).
 
-You need [Rust](https://rustup.rs) (stable). For anything on Arkiv, also Node.js ≥ 22.18.
-
-**1. A prompt-injected agent, stopped (no setup):**
+**1. A prompt-injected agent, stopped (no setup, no network):**
 
 ```bash
 cargo run -p finance-agent
@@ -100,17 +116,35 @@ cargo run -p finance-agent
 
 The agent obeys an injected invoice email telling it to send $900, then $250 to an attacker. Its payment tool asks Mandate first, so only the real $200 payment goes through. ([details](examples/finance-agent))
 
-**2. The full demo on Arkiv Tiramisu:**
+**2. Check our published dataset on Arkiv (read-only, no wallet or key):**
 
 ```bash
-cp .env.example apps/arkiv-adapter/.env   # add a funded ARKIV_PRIVATE_KEY and an ARKIV_API_KEY
+(cd apps/arkiv-adapter && npm install && npm run verify)
+```
+
+See [Verify it on Arkiv](#verify-it-on-arkiv) for what it queries and prints.
+
+**3. The full demo on Arkiv Tiramisu (needs a funded testnet wallet):**
+
+```bash
+cp .env.example apps/arkiv-adapter/.env   # set ARKIV_PRIVATE_KEY (fund it at https://hub.arkiv.network/faucet)
+                                          # and ARKIV_API_KEY (https://hub.arkiv.network/api-keys)
 (cd apps/arkiv-adapter && npm install)
 scripts/demo-arkiv.sh
 ```
 
-This signs mandates with the CLI, publishes them to Arkiv through the Rust API, runs every ALLOW/DENY above, revokes M1 and checks that each result is the expected one.
+This signs mandates with the CLI, publishes them to Arkiv through the Rust API (in the `mandate-global-tour-2026-acceptance` namespace), runs every ALLOW/DENY above, revokes M1 and checks that each result is the expected one.
 
-**3. Step by step with the CLI:** see [docs/cli.md](docs/cli.md).
+**4. The web app, locally.** `scripts/run-local.sh` needs demo principals, which a fresh clone doesn't have, so seed first (same `.env` as step 3):
+
+```bash
+scripts/seed-arkiv.sh    # once: creates demo principals in .mandate-demo/ and publishes a chain from them
+scripts/run-local.sh     # then open http://127.0.0.1:8080
+```
+
+`seed-arkiv.sh` generates *your own* demo keys, publishes a fresh Alice → FinanceAgent → InvoiceAgent chain (plus a revoked LegacyBot mandate) from them into the main namespace, and rewrites `arkiv/demo-dataset.json` with your entity keys and transactions. The app then reads that chain from Arkiv. It walks through three steps (who can act for Alice, can it do this, revoke it live) next to a live feed of Arkiv events.
+
+**5. Step by step with the CLI:** see [docs/cli.md](docs/cli.md).
 
 ## Why Arkiv
 
@@ -120,27 +154,43 @@ Mandate needs a public record of who granted what, and what was revoked, that **
 - **Revocations can't be deleted.** They're handed to a burn address in the same transaction that creates them, so not even their author can quietly undo one.
 - **Lifetimes match authorization.** Each entity expires when its mandate does, and typed attributes make "active mandates for this agent" a direct query.
 
-With Postgres, every verifier would have to trust the operator, who could hide a revocation. IPFS can't answer live queries. A subgraph would need a contract to index first. **What stays off Arkiv:** private keys, prompts, tool arguments and personal data. Details: [`arkiv/schema.md`](arkiv/schema.md).
+**Without Arkiv, revocation breaks:** a revocation forged by someone other than the issuer, or one an operator quietly deleted, would look exactly like the truth, and a revoked agent would be allowed again. With Postgres, every verifier would have to trust the operator, who could hide a revocation. IPFS can't answer live queries. A subgraph would need a contract to index first. **What stays off Arkiv:** private keys, prompts, tool arguments and personal data. Details: [`arkiv/schema.md`](arkiv/schema.md).
 
 ## Verify it on Arkiv
 
-- **Network:** Tiramisu (chain `7738577`), [explorer](https://tiramisu.explorer.arkiv.network)
+- **Network:** Tiramisu (chain `7738577`), public RPC `https://rpc.tiramisu.db-chain.testnet.arkiv.network`, [explorer](https://tiramisu.explorer.arkiv.network)
 - **Namespace:** every entity has `project_id = "mandate-global-tour-2026"`
 - **Live dataset (until 2026-11-07):** an active chain Alice → FinanceAgent → InvoiceAgent, and a revoked mandate for LegacyBot. Every entity key and transaction is in [`arkiv/demo-dataset.json`](arkiv/demo-dataset.json).
 - **Wallets:** Alice `0xa090f5ffe81d1603015001563b1d465f6131d2a4` and FinanceAgent `0x21418e3a1c39322e2949f5436966498349a144c4` create the entities (`$creator` = issuer). The funder `0xcE64d2DB165BDdc645A3701c58cF4A4490d0f2FB` only pays their gas. ([all wallets](arkiv/schema.md#wallets))
 
-The query Mandate runs to find a mandate's revocations, published only by its issuer (shown for one mandate; the adapter batches several with `or(...)`, see [`arkiv.ts`](apps/arkiv-adapter/src/arkiv.ts)):
+**Read it yourself, with no key:** `npm run verify` in `apps/arkiv-adapter` ([`scripts/verify.ts`](apps/arkiv-adapter/scripts/verify.ts)) runs this query once for `mandate` and once for `revocation`:
 
 ```ts
 publicClient
-  .select({ key: true, creator: true, owner: true, payload: true })
+  .select({ key: true, owner: true, creator: true, payload: true, expiresAt: true })
   .where(and(
     eq("project_id", str("mandate-global-tour-2026")),
-    eq("entity_type", str("revocation")),
-    eq("mandate_id", bytes32(mandateId)),
-    eq("$creator", addr(issuer)),
+    eq("entity_type", str("mandate")),   // then str("revocation")
   ))
+  .limit(200)
 ```
+
+For each entity it prints the type, mandate ID, the issuer named in the signed payload, `$creator`, `$owner`, the signed expiry, and whether `$creator` equals that issuer. Entities listed in `arkiv/demo-dataset.json` are marked. Expect the three demo mandates created by Alice or FinanceAgent, and one revocation created by FinanceAgent and owned by the burn address `0x…dEaD`; anything else in the namespace (sandbox delegations from the web app, or entities written by strangers) is listed too, and any entity whose `$creator` isn't its issuer is flagged as ignored by Mandate. `ARKIV_API_KEY` is optional; without it the query uses the RPC's anonymous budget.
+
+The engine's own revocation lookup adds the issuer to the query, so only revocations the issuer created can match (the adapter batches several with `or(...)`, see [`arkiv.ts`](apps/arkiv-adapter/src/arkiv.ts)):
+
+```ts
+eq("mandate_id", bytes32(mandateId)), eq("$creator", addr(issuer))
+```
+
+**After the entities expire:** the creation transactions stay on chain. Each `txHash` in `arkiv/demo-dataset.json` opens at `https://tiramisu.explorer.arkiv.network/tx/<hash>`, or check the sender with [Foundry](https://getfoundry.sh)'s `cast`:
+
+```bash
+cast tx 0x469214d527eadd59d442954fbb77b685f059d5d4045e96438b8a9d55b65f5338 from \
+  --rpc-url https://rpc.tiramisu.db-chain.testnet.arkiv.network
+```
+
+The sender of the root mandate's transaction should be Alice's address above. Details: [evidence that outlives expiry](arkiv/schema.md#evidence-that-outlives-expiry).
 
 The on-chain acceptance test, `npm run test:arkiv` in `apps/arkiv-adapter`, creates the demo chain on Tiramisu and checks each property: issuer authorship, revocation filtering by `$creator`, undeletable revocations and read-only mandates.
 
@@ -169,7 +219,7 @@ Protect a tool by asking Mandate before it acts, and only proceeding on ALLOW. T
 
 ## Hackathon
 
-Built for **Arkiv: Global Tour Stop** (tracks: **Security** and **Open Source**) between 12 and 18 October 2026. No pre-existing code was reused. Development was AI-assisted (Claude Code), directed by the author against a written specification.
+Built for **Arkiv: Global Tour Stop** (tracks: **Security** and **Open Source**) between 12 and 18 October 2026. There is no pre-existing work: the baseline is the first commit, [`a0b5245`](https://github.com/1888-Labs/Mandate/commit/a0b5245) (12 October 2026, "Milestone 1: core protocol types"). Early planning documents (`AGENTS.md`, `BUILD_SPEC.md`) were in the history until [`b46234d`](https://github.com/1888-Labs/Mandate/commit/b46234d) stopped tracking them. Development was AI-assisted (Claude Code), directed by the author against a written specification.
 
 ## License
 
