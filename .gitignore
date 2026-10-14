@@ -12,3 +12,4 @@ dist/
 # Private planning documents (kept locally, not published).
 AGENTS.md
 BUILD_SPEC.md
+.mandate-demo/

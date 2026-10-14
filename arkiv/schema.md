@@ -182,7 +182,24 @@ $ npm run test:arkiv-expiry
 | Address | Role |
 |---|---|
 | `0xcE64d2DB165BDdc645A3701c58cF4A4490d0f2FB` | **Funder.** Pays gas top-ups to issuer wallets. It created the entities from the earliest test runs; current entities are created by issuers. |
-| Issuer addresses (one per principal) | **Creators** of every mandate and revocation: `$creator` is the issuer. They are synthetic, generated per demo run. The deployed demo's fixed issuer addresses will be listed here. |
+| `0xa090f5ffe81d1603015001563b1d465f6131d2a4` | **Alice**, the demo's trust anchor (owner of `wallet:treasury-demo`). Creator of the root mandate. |
+| `0x21418e3a1c39322e2949f5436966498349a144c4` | **FinanceAgent.** Creator of the delegated mandates and of LegacyBot's revocation. |
+| `0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772` | **InvoiceAgent**, subject of an active mandate (creates nothing). |
+| `0x7f48032178e0c73993546b8c111607001ba4b0dd` | **LegacyBot**, subject of a revoked mandate (creates nothing). |
+
+## Live demo dataset
+
+[`scripts/seed-arkiv.sh`](../scripts/seed-arkiv.sh) publishes the demo chain to the main namespace, checks it, and records every entity key and transaction in [`demo-dataset.json`](demo-dataset.json). It's live until **2026-11-07**, past judging:
+
+| Mandate | Status | Created by |
+|---|---|---|
+| Alice → FinanceAgent: ≤ $1000 to AWS, delegable | active | Alice |
+| FinanceAgent → InvoiceAgent: ≤ $300 to AWS | active | FinanceAgent |
+| FinanceAgent → LegacyBot: ≤ $100 to AWS | **revoked** (revocation owned by the burn address) | FinanceAgent |
+
+Every entity expires: a mandate's expiry is part of what its issuer signed, so keeping the demo alive means signing fresh mandates, not extending old entities. Re-running the script does exactly that.
+
+Other demo runs (`scripts/demo-arkiv.sh`, the acceptance tests) use freshly generated issuers and the `-acceptance` namespace.
 
 Example from a live run of `scripts/demo-arkiv.sh` (sender of each transaction, read straight from the chain with `cast tx <hash> from`):
 

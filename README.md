@@ -84,7 +84,8 @@ With Postgres, every verifier would have to trust the operator, who could hide a
 
 - **Network:** Tiramisu (chain `7738577`), [explorer](https://tiramisu.explorer.arkiv.network)
 - **Namespace:** every entity has `project_id = "mandate-global-tour-2026"`
-- **Wallets:** the funder `0xcE64d2DB165BDdc645A3701c58cF4A4490d0f2FB` pays gas. Mandates and revocations are created by their issuers' own wallets (listed in [`arkiv/schema.md`](arkiv/schema.md#wallets)).
+- **Live dataset (until 2026-11-07):** an active chain Alice → FinanceAgent → InvoiceAgent, and a revoked mandate for LegacyBot. Every entity key and transaction is in [`arkiv/demo-dataset.json`](arkiv/demo-dataset.json).
+- **Wallets:** Alice `0xa090f5ffe81d1603015001563b1d465f6131d2a4` and FinanceAgent `0x21418e3a1c39322e2949f5436966498349a144c4` create the entities (`$creator` = issuer). The funder `0xcE64d2DB165BDdc645A3701c58cF4A4490d0f2FB` only pays their gas. ([all wallets](arkiv/schema.md#wallets))
 
 The query Mandate runs to find a mandate's revocations, published only by its issuer (shown for one mandate; the adapter batches several with `or(...)`, see [`arkiv.ts`](apps/arkiv-adapter/src/arkiv.ts)):
 

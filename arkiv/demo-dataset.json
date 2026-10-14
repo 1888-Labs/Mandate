@@ -1,0 +1,76 @@
+{
+  "network": "Arkiv Tiramisu (chain 7738577)",
+  "projectId": "mandate-global-tour-2026",
+  "createdAt": "2026-10-14 03:15 UTC",
+  "trustAnchor": {
+    "resource": "wallet:treasury-demo",
+    "owner": "alice 0xa090f5ffe81d1603015001563b1d465f6131d2a4"
+  },
+  "principals": {
+    "alice": "0xa090f5ffe81d1603015001563b1d465f6131d2a4",
+    "finance-agent": "0x21418e3a1c39322e2949f5436966498349a144c4",
+    "invoice-agent": "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",
+    "legacy-bot": "0x7f48032178e0c73993546b8c111607001ba4b0dd"
+  },
+  "mandates": [
+    {
+      "label": "Alice → FinanceAgent: ≤ $1000 to AWS, delegable",
+      "status": "active",
+      "mandateId": "0x7dea259529bd149699911f22305b76fe5a3827fa1537d60b52e4d8099cd2024d",
+      "issuer": "alice 0xa090f5ffe81d1603015001563b1d465f6131d2a4",
+      "subject": "finance-agent 0x21418e3a1c39322e2949f5436966498349a144c4",
+      "limits": {
+        "maxAmount": 1000,
+        "allowedRecipients": [
+          "AWS"
+        ]
+      },
+      "expiresAt": "2026-11-07 03:14 UTC",
+      "entityKey": "0x5db177f4fbacf4932d02775b1dba6e891467ae8519fb11b3f6f848578e403784",
+      "txHash": "0x469214d527eadd59d442954fbb77b685f059d5d4045e96438b8a9d55b65f5338"
+    },
+    {
+      "label": "FinanceAgent → InvoiceAgent: ≤ $300 to AWS",
+      "status": "active",
+      "mandateId": "0x614f35e041ade2442e1f925c966ec3c139242f1a833e92c1e67423c471df6527",
+      "issuer": "finance-agent 0x21418e3a1c39322e2949f5436966498349a144c4",
+      "subject": "invoice-agent 0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",
+      "limits": {
+        "maxAmount": 300,
+        "allowedRecipients": [
+          "AWS"
+        ]
+      },
+      "expiresAt": "2026-11-07 03:14 UTC",
+      "entityKey": "0x8bf061b98051992d89f5725ad5aa4432e76c31eda5ef734f2a48dc31d2f00227",
+      "txHash": "0x5d7478adb54f60fa43d99120ce097ee8f57387330754d8aefe07e6b710b9fb44"
+    },
+    {
+      "label": "FinanceAgent → LegacyBot: ≤ $100 to AWS",
+      "status": "revoked",
+      "mandateId": "0xa1331ff6058879869a7d8bc48173a5aa2ce80fec6deeb7fa10939a3eeb7701ac",
+      "issuer": "finance-agent 0x21418e3a1c39322e2949f5436966498349a144c4",
+      "subject": "legacy-bot 0x7f48032178e0c73993546b8c111607001ba4b0dd",
+      "limits": {
+        "maxAmount": 100,
+        "allowedRecipients": [
+          "AWS"
+        ]
+      },
+      "expiresAt": "2026-11-07 03:14 UTC",
+      "entityKey": "0x919b17191889d205e525cc2fc9cfedacb701b3158435d01550f449aaf9065962",
+      "txHash": "0xebe8343a4ee7aece5b6e75ce80205b39073db0c5505b22028f2404293d2e2c12"
+    }
+  ],
+  "revocations": [
+    {
+      "revocationId": "0xdb8a440ee952ce55cd19646fad60c1dfe034f5fb70200c694e931ac0bdc7ff26",
+      "revokes": "0xa1331ff6058879869a7d8bc48173a5aa2ce80fec6deeb7fa10939a3eeb7701ac",
+      "reason": "retired",
+      "issuer": "finance-agent 0x21418e3a1c39322e2949f5436966498349a144c4",
+      "entityKey": "0xfa8a4e761071992a455400b7513d8b3a641b72f24077a09d89962f6826d3e549",
+      "txHash": "0x85a9bcef92dce2368b5a8814c6f38bac616d25820035117044c8a1a6a42f44b8",
+      "owner": "0x000000000000000000000000000000000000dEaD (burn address: undeletable)"
+    }
+  ]
+}

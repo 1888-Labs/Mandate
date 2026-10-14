@@ -27,6 +27,7 @@ npm run test:arkiv-expiry   # entity expiry on Tiramisu (~4 minutes)
 
 ```bash
 scripts/demo-arkiv.sh             # CLI → mandate-server → adapter → Arkiv, all 7 demo steps, checked
+scripts/seed-arkiv.sh             # (re)publish the long-lived demo dataset to the main namespace
 cargo run -p finance-agent        # the prompt-injected agent demo, in memory
 ```
 
