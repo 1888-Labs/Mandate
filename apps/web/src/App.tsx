@@ -3,12 +3,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "./api"
 import { GraphCanvas } from "./components/GraphCanvas"
 import { Header } from "./components/Header"
+import { Hero } from "./components/Hero"
+import { HowItWorks } from "./components/HowItWorks"
 import { Inspector } from "./components/Inspector"
 import { Sandbox, type SandboxItem } from "./components/Sandbox"
 import { type Preset, Tester, type TesterForm } from "./components/Tester"
 import { Timeline } from "./components/Timeline"
-import { displayName, short } from "./format"
+import { Toaster } from "./components/Toaster"
+import { DOCS_URL, REPO_URL } from "./brand"
+import { displayName, explorerUrl, short } from "./format"
 import { useLiveEvents } from "./hooks/useLiveEvents"
+import { useToasts } from "./hooks/useToasts"
 import type { Decision, DemoInfo, Hex, MandateStatus, Principal } from "./types"
 
 export function App() {
@@ -30,6 +35,7 @@ export function App() {
   const [checking, setChecking] = useState(false)
   const [checkError, setCheckError] = useState<string | null>(null)
   const [pulse, setPulse] = useState(0)
+  const { toasts, push: toast, dismiss } = useToasts()
 
   const nameOf = useCallback((address: string) => names.get(address.toLowerCase()) ?? short(address), [names])
 
@@ -135,7 +141,7 @@ export function App() {
       const f = { agent, amount: String(amount), recipient: "AWS" }
       setForm(f)
       void runCheck(f)
-      document.getElementById("tester")?.scrollIntoView({ behavior: "smooth", block: "center" })
+      document.getElementById("check")?.scrollIntoView({ behavior: "smooth", block: "center" })
     },
     [runCheck],
   )
@@ -160,10 +166,18 @@ export function App() {
           s === pending ? { ...s, name: r.agent.name, address: r.agent.address, mandateId: r.mandate.id, phase: "active", working: null } : s,
         ),
       )
+      toast({
+        tone: "ok",
+        title: "Mandate published to Arkiv",
+        detail: `FinanceAgent → ${displayName(r.agent.name)}, signed by FinanceAgent's wallet`,
+        href: explorerUrl(demo?.explorer ?? "", "address", r.mandate.issuer) ?? undefined,
+      })
       checkAgent(r.agent.address)
     } catch (e) {
       setSandbox((list) => list.filter((s) => s !== pending))
-      setSandboxError(e instanceof Error ? e.message : String(e))
+      const message = e instanceof Error ? e.message : String(e)
+      setSandboxError(message)
+      toast({ tone: "bad", title: "Couldn't create a sandbox agent", detail: message })
     } finally {
       setCreating(false)
     }
@@ -177,10 +191,13 @@ export function App() {
     try {
       await api.revokeSandbox(item.mandateId)
       update({ phase: "revoked", working: null })
+      toast({ tone: "info", title: "Revoked on Arkiv", detail: `${nameOf(item.address)} loses its authority on the next check.` })
       await loadGraph()
       checkAgent(item.address)
     } catch (e) {
-      update({ working: null, error: e instanceof Error ? e.message : String(e) })
+      const message = e instanceof Error ? e.message : String(e)
+      update({ working: null, error: message })
+      toast({ tone: "bad", title: "Revocation failed", detail: message })
     }
   }
 
@@ -216,36 +233,12 @@ export function App() {
   return (
     <>
       <Header live={live.status} pulse={pulse} />
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Authorization for AI agents · on Arkiv</p>
-          <h1>
-            The prompt is not the security boundary. <em>Mandate is.</em>
-          </h1>
-          <p className="sub">
-            Give an agent signed, narrowly scoped authority. Let it delegate only a smaller slice. Revoke it any time. Every
-            mandate here is an{" "}
-            <a href="https://arkiv.network" target="_blank" rel="noopener">
-              Arkiv
-            </a>{" "}
-            entity created by its issuer's own wallet, and every check is decided live.
-          </p>
-        </div>
-        <dl className="stats">
-          <div>
-            <dt>Mandates on Arkiv</dt>
-            <dd>{edges.length || "–"}</dd>
-          </div>
-          <div>
-            <dt>Revoked</dt>
-            <dd>{edges.filter((e) => e.status !== "ACTIVE").length || "0"}</dd>
-          </div>
-          <div>
-            <dt>Network</dt>
-            <dd className="mono small">Tiramisu</dd>
-          </div>
-        </dl>
-      </section>
+      <Hero
+        mandates={edges.length}
+        revoked={edges.filter((e) => e.status !== "ACTIVE").length}
+        network="Tiramisu testnet"
+      />
+      <HowItWorks />
 
       {fatal ? (
         <main className="layout">
@@ -255,7 +248,7 @@ export function App() {
         </main>
       ) : (
         <main className="layout">
-          <section className="card graph-card">
+          <section className="card graph-card" id="graph">
             <div className="card-head">
               <div>
                 <h2>Delegation graph</h2>
@@ -268,7 +261,9 @@ export function App() {
             {graphError ? (
               <p className="error">{graphError}</p>
             ) : edges.length === 0 ? (
-              <div className="graph-canvas empty">{graphLoading ? "Loading from Arkiv…" : "No active mandates on Arkiv."}</div>
+              <div className="graph-canvas empty">
+                {graphLoading ? <div className="skeleton-graph" aria-label="Loading from Arkiv" /> : "No active mandates on Arkiv."}
+              </div>
             ) : (
               <GraphCanvas
                 edges={edges}
@@ -327,12 +322,30 @@ export function App() {
       )}
 
       <footer className="footer">
-        <a href="https://github.com/dicethedev/Mandate#readme" target="_blank" rel="noopener">README</a>
-        <a href="https://github.com/dicethedev/Mandate/blob/main/arkiv/schema.md" target="_blank" rel="noopener">Arkiv schema</a>
-        <a href="https://github.com/dicethedev/Mandate/blob/main/arkiv/demo-dataset.json" target="_blank" rel="noopener">Dataset evidence</a>
-        <a href="https://github.com/dicethedev/Mandate/blob/main/docs/api.md" target="_blank" rel="noopener">API</a>
-        <span className="muted">Built for Arkiv: Global Tour Stop · MIT</span>
+        <div className="footer-brand">
+          <span className="wordmark">MANDATE</span>
+          <p className="muted">Authorization for AI agents. Signed, scoped, revocable, and checked live on Arkiv.</p>
+          <span className="muted small">Built for Arkiv: Global Tour Stop · MIT licensed</span>
+        </div>
+        <div className="footer-col">
+          <b>Product</b>
+          <a href={DOCS_URL} target="_blank" rel="noopener">Documentation</a>
+          <a href={`${REPO_URL}/blob/main/docs/api.md`} target="_blank" rel="noopener">HTTP API</a>
+          <a href={`${REPO_URL}/blob/main/docs/security.md`} target="_blank" rel="noopener">Security model</a>
+        </div>
+        <div className="footer-col">
+          <b>Arkiv</b>
+          <a href={`${REPO_URL}/blob/main/arkiv/schema.md`} target="_blank" rel="noopener">Entity schema</a>
+          <a href={`${REPO_URL}/blob/main/arkiv/demo-dataset.json`} target="_blank" rel="noopener">Dataset evidence</a>
+          {demo?.explorer && <a href={demo.explorer} target="_blank" rel="noopener">Explorer ↗</a>}
+        </div>
+        <div className="footer-col">
+          <b>Project</b>
+          <a href={REPO_URL} target="_blank" rel="noopener">GitHub</a>
+          <a href={`${REPO_URL}#readme`} target="_blank" rel="noopener">README</a>
+        </div>
       </footer>
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </>
   )
 }

@@ -29,7 +29,7 @@ export function Tester(props: Props) {
     onCheck()
   }
   return (
-    <section className="card console" id="tester">
+    <section className="card console" id="check">
       <h2>Check an action</h2>
       <p className="hint">
         What a protected tool asks Mandate before acting on <code>{resourceLabel}</code>.
@@ -91,8 +91,9 @@ function DecisionView({
 }) {
   const allow = d.decision === "ALLOW"
   return (
-    <div className={`verdict-card ${allow ? "allow" : "deny"}`} aria-live="polite">
+    <div key={`${d.decision}-${d.mandateId}-${explain(d, agent, nameOf)}`} className={`verdict-card ${allow ? "allow" : "deny"} enter`} aria-live="polite">
       <div className="verdict-head">
+        <span className="verdict-icon" aria-hidden="true">{allow ? "✓" : "✕"}</span>
         <span className="verdict">{allow ? "ALLOW" : "DENY"}</span>
         {!allow && <span className="code">{d.reason}</span>}
       </div>

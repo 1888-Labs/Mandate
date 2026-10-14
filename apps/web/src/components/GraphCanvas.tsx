@@ -4,6 +4,7 @@ import {
   Background,
   BackgroundVariant,
   BaseEdge,
+  Controls,
   type Edge,
   type EdgeProps,
   EdgeLabelRenderer,
@@ -149,6 +150,7 @@ export function GraphCanvas({ edges, nameOf, highlight, cutMandate, selected, on
         colorMode="system"
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+        <Controls showInteractive={false} position="top-right" />
       </ReactFlow>
       {narrow && <span className="drag-hint">drag to explore</span>}
     </div>

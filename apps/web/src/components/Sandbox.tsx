@@ -22,7 +22,7 @@ type Props = {
 
 export function Sandbox({ items, creating, error, maxAmount, onCreate, onRevoke, onCheck, nameOf }: Props) {
   return (
-    <section className="card">
+    <section className="card" id="sandbox">
       <h2>Try revocation live</h2>
       <p className="hint">
         FinanceAgent delegates up to <b>${maxAmount} → AWS</b> to a fresh sandbox agent for 2 hours, published to Arkiv.

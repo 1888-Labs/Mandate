@@ -11,7 +11,7 @@ const time = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2
 
 export function Timeline({ events, explorer, nameOf }: Props) {
   return (
-    <section className="card">
+    <section className="card" id="activity">
       <div className="card-head">
         <h2>Activity</h2>
         <span className="muted small">live from Arkiv · WebSocket</span>
