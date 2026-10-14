@@ -1,9 +1,11 @@
 import type { FormEvent } from "react"
 
-import { limits, money, short } from "../format"
+import { explain } from "../explain"
+import { short } from "../format"
 import type { Decision, Hex, Principal } from "../types"
 
 export type TesterForm = { agent: Hex | ""; amount: string; recipient: string }
+export type Preset = { label: string; agent: Hex; amount: number; recipient: string }
 
 type Props = {
   agents: Principal[]
@@ -13,25 +15,24 @@ type Props = {
   onCheck: () => void
   onPreset: (preset: Preset) => void
   checking: boolean
-  decision: Decision | null
+  decision: { result: Decision; agent: Hex } | null
   error: string | null
   nameOf: (address: string) => string
   presets: Preset[]
+  onInspect: (mandateId: Hex) => void
 }
 
-export type Preset = { label: string; agent: Hex; amount: number; recipient: string }
-
 export function Tester(props: Props) {
-  const { agents, resourceLabel, form, onChange, onCheck, onPreset, checking, decision, error, nameOf, presets } = props
+  const { agents, resourceLabel, form, onChange, onCheck, onPreset, checking, decision, error, nameOf, presets, onInspect } = props
   const submit = (e: FormEvent) => {
     e.preventDefault()
     onCheck()
   }
   return (
-    <section className="card" id="tester">
+    <section className="card console" id="tester">
       <h2>Check an action</h2>
       <p className="hint">
-        Ask Mandate whether an agent may make a transfer from <code>{resourceLabel}</code>.
+        What a protected tool asks Mandate before acting on <code>{resourceLabel}</code>.
       </p>
       <form className="form" onSubmit={submit}>
         <label>
@@ -46,66 +47,58 @@ export function Tester(props: Props) {
         </label>
         <div className="row">
           <label>
-            Amount ($)
-            <input
-              type="number"
-              min={0}
-              step={1}
-              required
-              value={form.amount}
-              onChange={(e) => onChange({ ...form, amount: e.target.value })}
-            />
+            Transfer ($)
+            <input type="number" min={0} step={1} required value={form.amount} onChange={(e) => onChange({ ...form, amount: e.target.value })} />
           </label>
           <label>
-            Recipient
-            <input
-              type="text"
-              maxLength={64}
-              required
-              value={form.recipient}
-              onChange={(e) => onChange({ ...form, recipient: e.target.value })}
-            />
+            To
+            <input type="text" maxLength={64} required value={form.recipient} onChange={(e) => onChange({ ...form, recipient: e.target.value })} />
           </label>
         </div>
         <button type="submit" className="primary" disabled={checking || !form.agent}>
-          {checking ? "Checking…" : "Check"}
+          {checking ? "Asking Mandate…" : "Check"}
         </button>
       </form>
-      {error && <div className="result deny"><div className="error">{error}</div></div>}
-      {decision && !error && <DecisionView decision={decision} nameOf={nameOf} />}
       <div className="presets">
-        <span className="muted">Try:</span>
         {presets.map((p) => (
-          <button key={p.label} className="ghost small" onClick={() => onPreset(p)} disabled={checking}>
+          <button key={p.label} className="chip-button" onClick={() => onPreset(p)} disabled={checking}>
             {p.label}
           </button>
         ))}
       </div>
+      {error && (
+        <div className="verdict-card deny">
+          <p className="error">{error}</p>
+        </div>
+      )}
+      {decision && !error && (
+        <DecisionView decision={decision.result} agent={nameOf(decision.agent)} nameOf={nameOf} onInspect={onInspect} />
+      )}
     </section>
   )
 }
 
-function DecisionView({ decision: d, nameOf }: { decision: Decision; nameOf: (a: string) => string }) {
+function DecisionView({
+  decision: d,
+  agent,
+  nameOf,
+  onInspect,
+}: {
+  decision: Decision
+  agent: string
+  nameOf: (a: string) => string
+  onInspect: (id: Hex) => void
+}) {
   const allow = d.decision === "ALLOW"
-  const details: string[] = []
-  if (!allow) {
-    if (d.requestedAmount !== undefined && d.maximumAmount !== undefined) {
-      details.push(`requested ${d.requestedAmount === null ? "nothing" : money(d.requestedAmount)}, maximum ${money(d.maximumAmount)}`)
-    }
-    if (d.allowedRecipients) details.push(`allowed recipients: ${d.allowedRecipients.join(", ") || "none"}`)
-    if (d.revokedMandateId) details.push(`revoked mandate ${short(d.revokedMandateId)}`)
-  }
   return (
-    <div className={`result ${allow ? "allow" : "deny"}`}>
-      <div className="verdict">
-        {allow ? "✓ ALLOW" : "✗ DENY"}
+    <div className={`verdict-card ${allow ? "allow" : "deny"}`} aria-live="polite">
+      <div className="verdict-head">
+        <span className="verdict">{allow ? "ALLOW" : "DENY"}</span>
         {!allow && <span className="code">{d.reason}</span>}
       </div>
-      <p>{allow ? `Within ${limits(d.effectiveConstraints)}, granted by ${nameOf(d.rootPrincipal)}.` : d.message}</p>
-      {details.length > 0 && <p className="muted">{details.join(" · ")}</p>}
+      <p className="explanation">{explain(d, agent, nameOf)}</p>
       {d.delegationPath.length > 1 && (
         <div className="path">
-          <span className="muted">Chain:</span>
           {d.delegationPath.map((a, i) => (
             <span key={`${a}-${i}`} className="path-step">
               {i > 0 && <span className="arrow">→</span>}
@@ -114,6 +107,18 @@ function DecisionView({ decision: d, nameOf }: { decision: Decision; nameOf: (a:
           ))}
         </div>
       )}
+      <div className="evidence-links">
+        {d.mandateId && (
+          <button className="link" onClick={() => onInspect(d.mandateId!)}>
+            decided by mandate {short(d.mandateId)} →
+          </button>
+        )}
+        {!allow && d.revokedMandateId && (
+          <button className="link" onClick={() => onInspect(d.revokedMandateId!)}>
+            revoked: {short(d.revokedMandateId)} →
+          </button>
+        )}
+      </div>
     </div>
   )
 }

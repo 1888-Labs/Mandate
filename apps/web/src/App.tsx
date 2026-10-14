@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { api } from "./api"
-import { DelegationGraph } from "./components/DelegationGraph"
+import { GraphCanvas } from "./components/GraphCanvas"
 import { Header } from "./components/Header"
-import { LiveFeed } from "./components/LiveFeed"
+import { Inspector } from "./components/Inspector"
 import { Sandbox, type SandboxItem } from "./components/Sandbox"
 import { type Preset, Tester, type TesterForm } from "./components/Tester"
+import { Timeline } from "./components/Timeline"
 import { displayName, short } from "./format"
 import { useLiveEvents } from "./hooks/useLiveEvents"
 import type { Decision, DemoInfo, Hex, MandateStatus, Principal } from "./types"
@@ -23,7 +24,9 @@ export function App() {
   const [graphError, setGraphError] = useState<string | null>(null)
 
   const [form, setForm] = useState<TesterForm>({ agent: "", amount: "200", recipient: "AWS" })
-  const [decision, setDecision] = useState<Decision | null>(null)
+  const [decision, setDecision] = useState<{ result: Decision; agent: Hex } | null>(null)
+  const [selectedId, setSelectedId] = useState<Hex | null>(null)
+  const [inspectKey, setInspectKey] = useState(0)
   const [checking, setChecking] = useState(false)
   const [checkError, setCheckError] = useState<string | null>(null)
   const [pulse, setPulse] = useState(0)
@@ -49,14 +52,22 @@ export function App() {
         const seen = latest.get(key)
         if (!seen || seen.mandate.issuedAt < entry.mandate.issuedAt) latest.set(key, entry)
       }
-      setEdges([...latest.values()])
+      const list = [...latest.values()]
+      setEdges(list)
       setGraphError(null)
+      setInspectKey((k) => k + 1)
+      // Start by inspecting InvoiceAgent's mandate, the heart of the demo.
+      setSelectedId((current) => {
+        if (current && list.some((e) => e.mandate.id === current)) return current
+        const invoice = demo?.principals.find((p) => p.name === "invoice-agent")?.address
+        return (list.find((e) => e.mandate.subject === invoice) ?? list[0])?.mandate.id ?? null
+      })
     } catch (e) {
       setGraphError(e instanceof Error ? e.message : String(e))
     } finally {
       setGraphLoading(false)
     }
-  }, [agents])
+  }, [agents, demo])
 
   // Load the demo once.
   useEffect(() => {
@@ -99,15 +110,17 @@ export function App() {
       setChecking(true)
       setCheckError(null)
       try {
-        setDecision(
-          await api.authorize({
-            subject: f.agent,
-            action: "transfer",
-            resource: demo.resource,
-            amount: Number(f.amount),
-            recipient: f.recipient.trim(),
-          }),
-        )
+        const result = await api.authorize({
+          subject: f.agent,
+          action: "transfer",
+          resource: demo.resource,
+          amount: Number(f.amount),
+          recipient: f.recipient.trim(),
+        })
+        setDecision({ result, agent: f.agent })
+        // Point the inspector at the mandate that decided it.
+        const decisive = result.decision === "DENY" ? (result.revokedMandateId ?? result.mandateId) : result.mandateId
+        if (decisive) setSelectedId(decisive)
       } catch (e) {
         setCheckError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -171,6 +184,18 @@ export function App() {
     }
   }
 
+  // A sandbox card's status and mandate come from the live graph, not memory:
+  // after a reload, a revoked sandbox must still show as revoked.
+  const sandboxView: SandboxItem[] = useMemo(
+    () =>
+      sandbox.map((s) => {
+        const e = edges.find((x) => s.address && x.mandate.subject === s.address)
+        if (!e || s.working) return s
+        return { ...s, mandateId: s.mandateId ?? e.mandate.id, phase: e.status === "ACTIVE" ? "active" : "revoked" }
+      }),
+    [sandbox, edges],
+  )
+
   const presets: Preset[] = useMemo(() => {
     if (!demo) return []
     const by = (name: string) => demo.principals.find((p) => p.name === name)?.address
@@ -192,65 +217,112 @@ export function App() {
     <>
       <Header live={live.status} pulse={pulse} />
       <section className="hero">
-        <h1>
-          The prompt is not the security boundary. <em>Mandate is.</em>
-        </h1>
-        <p>
-          Signed, narrowing, revocable authority for AI agents. Every mandate below is an{" "}
-          <a href="https://arkiv.network" target="_blank" rel="noopener">
-            Arkiv
-          </a>{" "}
-          entity created by its issuer's own wallet, and every check is decided live from Arkiv.
-        </p>
+        <div>
+          <p className="eyebrow">Authorization for AI agents · on Arkiv</p>
+          <h1>
+            The prompt is not the security boundary. <em>Mandate is.</em>
+          </h1>
+          <p className="sub">
+            Give an agent signed, narrowly scoped authority. Let it delegate only a smaller slice. Revoke it any time. Every
+            mandate here is an{" "}
+            <a href="https://arkiv.network" target="_blank" rel="noopener">
+              Arkiv
+            </a>{" "}
+            entity created by its issuer's own wallet, and every check is decided live.
+          </p>
+        </div>
+        <dl className="stats">
+          <div>
+            <dt>Mandates on Arkiv</dt>
+            <dd>{edges.length || "–"}</dd>
+          </div>
+          <div>
+            <dt>Revoked</dt>
+            <dd>{edges.filter((e) => e.status !== "ACTIVE").length || "0"}</dd>
+          </div>
+          <div>
+            <dt>Network</dt>
+            <dd className="mono small">Tiramisu</dd>
+          </div>
+        </dl>
       </section>
 
       {fatal ? (
-        <main className="grid">
-          <section className="card feed-card">
+        <main className="layout">
+          <section className="card wide">
             <p className="error">Demo mode is not available: {fatal}</p>
           </section>
         </main>
       ) : (
-        <main className="grid">
-          <DelegationGraph
-            edges={edges}
+        <main className="layout">
+          <section className="card graph-card">
+            <div className="card-head">
+              <div>
+                <h2>Delegation graph</h2>
+                <p className="hint">Live from Arkiv. Each arrow is a signed mandate; authority only narrows going down. Click one to inspect it.</p>
+              </div>
+              <button className="ghost icon" onClick={() => void loadGraph()} title="Reload from Arkiv" disabled={graphLoading}>
+                ↻
+              </button>
+            </div>
+            {graphError ? (
+              <p className="error">{graphError}</p>
+            ) : edges.length === 0 ? (
+              <div className="graph-canvas empty">{graphLoading ? "Loading from Arkiv…" : "No active mandates on Arkiv."}</div>
+            ) : (
+              <GraphCanvas
+                edges={edges}
+                nameOf={nameOf}
+                highlight={decision?.result.delegationPath ?? []}
+                cutMandate={decision?.result.decision === "DENY" ? (decision.result.revokedMandateId ?? null) : null}
+                selected={selectedId}
+                onSelect={(e) => setSelectedId(e.mandate.id)}
+              />
+            )}
+            <div className="legend">
+              <span><i className="swatch active" /> active</span>
+              <span><i className="swatch revoked" /> revoked (cut)</span>
+              <span><i className="swatch path" /> last decision's path</span>
+            </div>
+          </section>
+
+          <Tester
+            agents={agents}
+            resourceLabel={demo ? `${demo.resource.kind}:${demo.resource.id}` : "…"}
+            form={form}
+            onChange={setForm}
+            onCheck={() => void runCheck(form)}
+            onPreset={(p) => {
+              const f = { agent: p.agent, amount: String(p.amount), recipient: p.recipient }
+              setForm(f)
+              void runCheck(f)
+            }}
+            checking={checking}
+            decision={decision}
+            error={checkError}
+            nameOf={nameOf}
+            presets={presets}
+            onInspect={(id) => setSelectedId(id)}
+          />
+
+          <Inspector
+            entry={edges.find((e) => e.mandate.id === selectedId) ?? null}
             nameOf={nameOf}
             explorer={demo?.explorer ?? ""}
-            loading={graphLoading}
-            error={graphError}
-            onRefresh={() => void loadGraph()}
-            onSelect={(agent) => setForm((f) => ({ ...f, agent }))}
+            refreshKey={inspectKey}
+            onCheck={(agent) => checkAgent(agent, 10)}
           />
-          <div className="side">
-            <Tester
-              agents={agents}
-              resourceLabel={demo ? `${demo.resource.kind}:${demo.resource.id}` : "…"}
-              form={form}
-              onChange={setForm}
-              onCheck={() => void runCheck(form)}
-              onPreset={(p) => {
-                const f = { agent: p.agent, amount: String(p.amount), recipient: p.recipient }
-                setForm(f)
-                void runCheck(f)
-              }}
-              checking={checking}
-              decision={decision}
-              error={checkError}
-              nameOf={nameOf}
-              presets={presets}
-            />
-            <Sandbox
-              items={sandbox}
-              creating={creating}
-              error={sandboxError}
-              maxAmount={demo?.sandbox.maxAmount ?? 50}
-              onCreate={() => void createSandbox()}
-              onRevoke={(s) => void revokeSandbox(s)}
-              onCheck={(agent) => checkAgent(agent)}
-              nameOf={nameOf}
-            />
-          </div>
-          <LiveFeed events={live.events} explorer={demo?.explorer ?? ""} nameOf={nameOf} />
+          <Sandbox
+            items={sandboxView}
+            creating={creating}
+            error={sandboxError}
+            maxAmount={demo?.sandbox.maxAmount ?? 50}
+            onCreate={() => void createSandbox()}
+            onRevoke={(s) => void revokeSandbox(s)}
+            onCheck={(agent) => checkAgent(agent)}
+            nameOf={nameOf}
+          />
+          <Timeline events={live.events} explorer={demo?.explorer ?? ""} nameOf={nameOf} />
         </main>
       )}
 

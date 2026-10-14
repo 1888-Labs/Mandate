@@ -1,4 +1,4 @@
-import type { Decision, DemoInfo, Hex, MandateStatus, Resource, SandboxCreated } from "./types"
+import type { Chain, Decision, DemoInfo, Hex, MandateStatus, Resource, SandboxCreated } from "./types"
 
 export class ApiError extends Error {}
 
@@ -17,6 +17,8 @@ export const api = {
 
   agentMandates: (agent: Hex) =>
     request<{ mandates: MandateStatus[] }>(`/v1/agents/${agent}/mandates?active=true`).then((r) => r.mandates),
+
+  chain: (mandateId: Hex) => request<Chain>(`/v1/mandates/${mandateId}/chain`),
 
   authorize: (body: { subject: Hex; action: string; resource: Resource; amount: number; recipient: string }) =>
     request<Decision>("/v1/authorize", { method: "POST", body: JSON.stringify(body) }),

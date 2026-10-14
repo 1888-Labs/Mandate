@@ -87,3 +87,24 @@ export type LiveEvent = {
   txHash: Hex
   blockNumber: string
 }
+
+export type Revocation = {
+  id: Hex
+  mandateId: Hex
+  issuer: Hex
+  revokedAt: number
+  reason: string | null
+  signature: Hex
+}
+
+/** `GET /v1/mandates/{id}/chain` */
+export type Chain = {
+  mandateId: Hex
+  valid: boolean
+  links: Mandate[]
+  arkiv: Record<string, ArkivRef>
+  revocations: { revocation: Revocation; arkiv: ArkivRef | null }[]
+  delegationPath: Hex[]
+  denial?: Deny
+}
+
