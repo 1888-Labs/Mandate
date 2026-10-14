@@ -193,3 +193,5 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
   .footer { padding: 8px 16px 32px; }
 }
 
+
+.path-step { display: inline-flex; align-items: center; gap: 6px; }

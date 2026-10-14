@@ -1,102 +1,14 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mandate · authorization for AI agents</title>
-  <meta name="description" content="Verifiable delegated authorization for AI agents, on Arkiv.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%238b7bff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true">◆</span>
-      <span class="name">Mandate</span>
-      <span class="tag">authorization for AI agents</span>
-    </div>
-    <div class="statusbar">
-      <span class="chip">Arkiv · Tiramisu</span>
-      <span class="chip live" id="live"><span class="dot"></span><span id="live-text">connecting…</span></span>
-      <a class="chip link" href="https://github.com/dicethedev/Mandate" target="_blank" rel="noopener">GitHub ↗</a>
-    </div>
-  </header>
-
-  <section class="hero">
-    <h1>The prompt is not the security boundary. <em>Mandate is.</em></h1>
-    <p>
-      Signed, narrowing, revocable authority for AI agents. Every mandate below is an
-      <a href="https://arkiv.network" target="_blank" rel="noopener">Arkiv</a> entity created by its
-      issuer's own wallet, and every check is decided live from Arkiv.
-    </p>
-  </section>
-
-  <main class="grid">
-    <section class="card graph-card">
-      <div class="card-head">
-        <h2>Delegation graph</h2>
-        <button class="ghost" id="refresh" title="Reload from Arkiv">↻</button>
-      </div>
-      <p class="hint">Who granted what. Each link is a signed mandate; authority only narrows going down.</p>
-      <div id="graph" class="graph"><p class="muted">Loading from Arkiv…</p></div>
-    </section>
-
-    <div class="side">
-      <section class="card">
-        <h2>Check an action</h2>
-        <p class="hint">Ask Mandate whether an agent may make a transfer from <code id="resource">wallet:treasury-demo</code>.</p>
-        <form id="tester" class="form">
-          <label>Agent
-            <select id="agent"></select>
-          </label>
-          <div class="row">
-            <label>Amount ($)
-              <input id="amount" type="number" min="0" step="1" value="200" required>
-            </label>
-            <label>Recipient
-              <input id="recipient" type="text" value="AWS" maxlength="64" required>
-            </label>
-          </div>
-          <button type="submit" class="primary" id="check">Check</button>
-        </form>
-        <div id="result" class="result" hidden></div>
-        <div class="presets">
-          <span class="muted">Try:</span>
-          <button class="ghost small" data-preset="invoice-agent,200,AWS">$200 → AWS</button>
-          <button class="ghost small" data-preset="invoice-agent,700,AWS">$700 → AWS</button>
-          <button class="ghost small" data-preset="invoice-agent,100,RandomVendor">$100 → RandomVendor</button>
-          <button class="ghost small" data-preset="legacy-bot,50,AWS">LegacyBot $50</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Try revocation live</h2>
-        <p class="hint">
-          FinanceAgent delegates up to <b>$50 → AWS</b> to a fresh sandbox agent for 2 hours, published to Arkiv.
-          Then revoke it and watch it stop working, with no refresh.
-        </p>
-        <button class="primary" id="sandbox-create">Create a sandbox agent</button>
-        <div id="sandbox" class="sandbox"></div>
-      </section>
-    </div>
-
-    <section class="card feed-card">
-      <div class="card-head">
-        <h2>Live on Arkiv</h2>
-        <span class="muted small">entity events over WebSocket · no polling</span>
-      </div>
-      <ol id="feed" class="feed"><li class="muted empty">Waiting for activity… create a sandbox agent to see one arrive.</li></ol>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <a href="https://github.com/dicethedev/Mandate#readme" target="_blank" rel="noopener">README</a>
-    <a href="https://github.com/dicethedev/Mandate/blob/main/arkiv/schema.md" target="_blank" rel="noopener">Arkiv schema</a>
-    <a href="https://github.com/dicethedev/Mandate/blob/main/arkiv/demo-dataset.json" target="_blank" rel="noopener">Dataset evidence</a>
-    <a href="https://github.com/dicethedev/Mandate/blob/main/docs/api.md" target="_blank" rel="noopener">API</a>
-    <span class="muted">Built for Arkiv: Global Tour Stop · MIT</span>
-  </footer>
-
-  <script src="/app.js" type="module"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mandate · authorization for AI agents</title>
+    <meta name="description" content="Verifiable delegated authorization for AI agents, on Arkiv." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%238b7bff'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

@@ -23,6 +23,18 @@ npm run test:arkiv          # on-chain acceptance on Tiramisu (needs a funded AR
 npm run test:arkiv-expiry   # entity expiry on Tiramisu (~4 minutes)
 ```
 
+## Web UI
+
+React + TypeScript + Vite, in [`apps/web`](../apps/web). `mandate-server` serves the built `apps/web/dist` (`WEB_DIR` to change it).
+
+```bash
+cd apps/web
+npm install
+npm run dev        # http://127.0.0.1:5173, proxying /v1 to mandate-server on :8080
+npm run build      # type-check and build into dist/
+npm test           # unit tests (vitest)
+```
+
 ## End to end
 
 ```bash

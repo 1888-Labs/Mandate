@@ -48,7 +48,7 @@ An ALLOW returns `mandateId`, `rootPrincipal`, `delegationPath`, `chain` and `ef
 
 ## Web app and demo mode
 
-The server also serves the web UI at `/`. With `DEMO_KEYS` set (the *synthetic* keys of the demo principals), it enables:
+The server also serves the web UI (the React app built into `apps/web/dist`) at `/`. With `DEMO_KEYS` set (the *synthetic* keys of the demo principals), it enables:
 
 | Method | Path | What it does |
 |---|---|---|
@@ -70,5 +70,6 @@ Sandbox writes are limited to 30 per hour in total, because each one spends test
 | `HOST`, `PORT` | Listen address (default `127.0.0.1:8080`) |
 | `DEMO_KEYS` | `name=0xkey,…` synthetic demo keys (must include `finance-agent`); enables the sandbox |
 | `DEMO_RESOURCE` | The demo's resource (default `wallet:treasury-demo`) |
+| `WEB_DIR` | The built web UI to serve at `/` (default `apps/web/dist`) |
 
 The adapter's own settings (`ARKIV_PRIVATE_KEY`, `ARKIV_ISSUER_KEYS`, `ARKIV_API_KEY`, …) are in [`.env.example`](../.env.example) and [`apps/arkiv-adapter`](../apps/arkiv-adapter).

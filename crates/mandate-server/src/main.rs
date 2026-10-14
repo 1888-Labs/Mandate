@@ -8,6 +8,7 @@
 //!   DEMO_KEYS       synthetic demo keys (`name=0xkey,…`, needs finance-agent): enables
 //!                   the web UI's sandbox. Testnet demo principals only.
 //!   DEMO_RESOURCE   the demo's resource (default wallet:treasury-demo)
+//!   WEB_DIR         the built web UI (default apps/web/dist)
 //!   HOST, PORT      listen address (default 127.0.0.1:8080)
 //!   RUST_LOG        log filter (default info)
 
@@ -53,12 +54,23 @@ async fn serve<B: Backend>(
         }
         None => None,
     };
+    let web_dir =
+        std::path::PathBuf::from(env("WEB_DIR").unwrap_or_else(|| "apps/web/dist".into()));
+    if web_dir.join("index.html").is_file() {
+        info!("web UI: {}", web_dir.display());
+    } else {
+        info!(
+            "web UI not built ({} has no index.html): serving a placeholder",
+            web_dir.display()
+        );
+    }
     let app = router(AppState {
         backend,
         anchors,
         clock: system_clock(),
         demo,
         events_url,
+        web_dir: Some(web_dir),
     });
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

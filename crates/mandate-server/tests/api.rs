@@ -43,6 +43,7 @@ fn demo_with<B: Backend>(backend: B) -> Demo {
         clock: clock_fn,
         demo: None,
         events_url: None,
+        web_dir: None,
     });
     Demo {
         app,
@@ -726,6 +727,7 @@ fn demo_mode() -> (Demo, Router, SigningKey, SigningKey) {
         clock: Arc::new(move || c.load(Ordering::SeqCst)),
         demo: Some(demo_state),
         events_url: None,
+        web_dir: None,
     });
     let (alice, finance) = (d.alice.clone(), d.finance.clone());
     (
@@ -830,4 +832,57 @@ async fn serves_the_web_ui() {
         .to_str()
         .unwrap()
         .starts_with("text/html"));
+}
+
+#[tokio::test]
+async fn serves_the_built_web_app_with_spa_fallback() {
+    let dir = std::env::temp_dir().join(format!("mandate-web-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    std::fs::write(dir.join("index.html"), "<!doctype html><div id=root></div>").unwrap();
+    std::fs::write(dir.join("assets/app.js"), "console.log(1)").unwrap();
+    let app = router(AppState {
+        backend: MemoryBackend::new(),
+        anchors: TrustAnchors::new(),
+        clock: Arc::new(|| NOW),
+        demo: None,
+        events_url: None,
+        web_dir: Some(dir.clone()),
+    });
+    let get = |path: &str| {
+        let app = app.clone();
+        let path = path.to_string();
+        async move {
+            let res = app
+                .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let status = res.status();
+            let ct = res
+                .headers()
+                .get("content-type")
+                .map(|v| v.to_str().unwrap().to_string());
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                ct.unwrap_or_default(),
+                String::from_utf8_lossy(&body).into_owned(),
+            )
+        }
+    };
+    let (s, ct, body) = get("/").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(ct.starts_with("text/html") && body.contains("id=root"));
+    let (s, ct, _) = get("/assets/app.js").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(ct.contains("javascript"), "{ct}");
+    let (s, _, body) = get("/some/client/route").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(body.contains("id=root"), "unknown pages get the app");
+    let (s, ct, body) = get("/v1/nope").await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert!(
+        ct.starts_with("application/json") && body.contains("NOT_FOUND"),
+        "API 404s stay JSON"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -13,3 +13,4 @@ dist/
 AGENTS.md
 BUILD_SPEC.md
 .mandate-demo/
+*.tsbuildinfo

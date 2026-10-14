@@ -32,16 +32,19 @@ pub struct AppState<B> {
     pub demo: Option<Demo>,
     /// The adapter's live event stream, relayed at `/v1/events`.
     pub events_url: Option<String>,
+    /// The built web UI (`apps/web/dist`), served at `/`.
+    pub web_dir: Option<std::path::PathBuf>,
 }
 
 type Shared<B> = State<Arc<AppState<B>>>;
 type ApiResult = Result<(StatusCode, Json<Value>), ApiError>;
 
 pub fn router<B: Backend>(state: AppState<B>) -> Router {
-    Router::new()
-        .route("/", get(web::index))
-        .route("/app.js", get(web::app_js))
-        .route("/style.css", get(web::style))
+    let web_dir = state
+        .web_dir
+        .clone()
+        .filter(|d| d.join("index.html").is_file());
+    let app = Router::new()
         .route("/health", get(health::<B>))
         .route("/v1/events", get(events::<B>))
         .route("/v1/demo", get(demo_info::<B>))
@@ -54,7 +57,21 @@ pub fn router<B: Backend>(state: AppState<B>) -> Router {
         .route("/v1/mandates/{id}/delegate", post(delegate::<B>))
         .route("/v1/mandates/{id}/revoke", post(revoke::<B>))
         .route("/v1/agents/{id}/mandates", get(agent_mandates::<B>))
-        .with_state(Arc::new(state))
+        // Unknown API paths are JSON 404s, not the web app.
+        .route("/v1/{*rest}", axum::routing::any(api_not_found))
+        .with_state(Arc::new(state));
+    // Everything else is the single-page web app.
+    match web_dir {
+        Some(dir) => app.fallback_service(
+            tower_http::services::ServeDir::new(&dir)
+                .fallback(tower_http::services::ServeFile::new(dir.join("index.html"))),
+        ),
+        None => app.fallback(web::not_built),
+    }
+}
+
+async fn api_not_found() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, "NOT_FOUND", "no such API endpoint")
 }
 
 fn unavailable(e: BackendError) -> ApiError {

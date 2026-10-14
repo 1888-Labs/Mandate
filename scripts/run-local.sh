@@ -17,6 +17,8 @@ KEYS="$ROOT/.mandate-demo/keys.json"
 
 cd "$ROOT"
 cargo build -q -p mandate-server
+# The web UI (React + Vite), served by mandate-server from apps/web/dist.
+(cd apps/web && { [ -d node_modules ] || npm install --silent; } && npm run -s build)
 
 keys() { python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); print(sys.argv[2].format(**{n.replace("-","_"): v for n,v in k.items()}))' "$KEYS" "$1"; }
 alice_addr() { "$ROOT/target/debug/mandate" --home "$ROOT/.mandate-demo" principal list | awk '$1=="alice"{print $2}'; }
