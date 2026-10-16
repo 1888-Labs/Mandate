@@ -1,0 +1,27 @@
+# Render's free web services sleep after 15 minutes without traffic, so judges
+# would hit a cold start. Call /health on the hosted API (repository variable
+# MANDATE_API_URL) often enough to keep it awake. GitHub can delay scheduled
+# runs, hence every 5 minutes rather than every 14.
+name: Keep API awake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    if: vars.MANDATE_API_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A sleeping service can take about a minute to wake, so allow for it.
+      - run: curl -fsS --retry 5 --retry-all-errors --retry-delay 10 -m 90 "$API/health"
+        env:
+          API: ${{ vars.MANDATE_API_URL }}

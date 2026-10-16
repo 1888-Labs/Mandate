@@ -15,7 +15,7 @@ The UI finds the API through the repository variable `MANDATE_API_URL`, and the 
 4. **Environment Variables → Add from .env**: paste the contents of `.mandate-demo/render.env`.
 5. **Advanced → Health Check Path**: `/health`. Deploy, then check `https://<service>.onrender.com/health` and `/v1/demo`.
 
-Free services sleep after 15 minutes without traffic, so something has to call `/health` regularly to keep the demo awake for judges.
+Free services sleep after 15 minutes without traffic. [`.github/workflows/keep-awake.yml`](../.github/workflows/keep-awake.yml) calls `/health` every 5 minutes once `MANDATE_API_URL` is set, so the demo stays awake for judges.
 
 | Variable | What it is |
 | --- | --- |
