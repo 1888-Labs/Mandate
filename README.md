@@ -146,6 +146,15 @@ scripts/run-local.sh     # then open http://127.0.0.1:8080
 
 **5. Step by step with the CLI:** see [docs/cli.md](docs/cli.md).
 
+**6. Run your own API with Docker (no Rust or Node needed):**
+
+```bash
+docker run --rm -p 8080:8080 -e MANDATE_BACKEND=memory \
+  -e TRUST_ANCHORS="wallet:treasury=0xYOUR_ADDRESS" ghcr.io/1888-labs/mandate
+```
+
+Then post signed mandates and ask `POST /v1/authorize`. For Arkiv, Docker Compose and production deployments, see [Self-hosting](docs/self-hosting.md) and [Deploying to production](docs/deployment.md). Or call the [public test API](docs/public-api.md) without installing anything.
+
 ## Why Arkiv
 
 Mandate needs a public record of who granted what, and what was revoked, that **no single operator controls**.
@@ -198,7 +207,9 @@ The on-chain acceptance test, `npm run test:arkiv` in `apps/arkiv-adapter`, crea
 
 | You want to… | Read |
 |---|---|
+| Try the API without installing anything | [Public test API](docs/public-api.md) |
 | Check an agent's action from any language | [HTTP API](docs/api.md) |
+| Run your own API (Docker, Render, Fly.io, any server) | [Self-hosting](docs/self-hosting.md) · [Deploying](docs/deployment.md) |
 | Grant, delegate and revoke from a terminal | [CLI](docs/cli.md) |
 | Embed the engine in Rust | [Library](docs/library.md) |
 | Read Mandate's data straight from Arkiv | [Arkiv schema](arkiv/schema.md) |
@@ -212,7 +223,8 @@ Protect a tool by asking Mandate before it acts, and only proceeding on ALLOW. T
 | [Protocol](docs/protocol.md) | Mandates, delegation rules, revocation, IDs, signatures, deny codes |
 | [Security](docs/security.md) | What Mandate defends against, and what it doesn't |
 | [Architecture](docs/architecture.md) | Components, how a decision is made, repository layout |
-| [HTTP API](docs/api.md) · [CLI](docs/cli.md) · [Library](docs/library.md) | Using Mandate |
+| [HTTP API](docs/api.md) · [Public test API](docs/public-api.md) · [CLI](docs/cli.md) · [Library](docs/library.md) | Using Mandate |
+| [Self-hosting](docs/self-hosting.md) · [Deploying](docs/deployment.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) | Running your own API |
 | [Development](docs/development.md) | Building, testing, roadmap |
 | [Inspiration](docs/inspiration.md) | Google Zanzibar and related work |
 | [Arkiv schema](arkiv/schema.md) · [Friction report](arkiv/friction.md) | Arkiv integration |

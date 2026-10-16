@@ -1,37 +1,83 @@
-# Deploying the demo
+# Deploying to production
 
-The public demo has two halves:
+[← Back to the README](../README.md)
 
-- **Docs and web UI** on GitHub Pages: the [Vocs](https://vocs.dev) docs site at https://1888-labs.github.io/Mandate/ and the demo UI at https://1888-labs.github.io/Mandate/demo/. Built and published by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) on every push to `main` that touches `apps/docs`, `apps/web`, `docs/` or `arkiv/`.
-- **API** on Render (free web service): one container ([`Dockerfile`](../Dockerfile)) running `mandate-server` on `$PORT` and `arkiv-adapter` on loopback ([`scripts/container-start.sh`](../scripts/container-start.sh)). The server also serves the UI, so the Render URL works on its own.
+Mandate runs anywhere a container runs. This page covers three common setups, a production checklist, and how the public demo is hosted. To try Mandate locally first, see [Self-hosting](self-hosting.md).
 
-The UI finds the API through the repository variable `MANDATE_API_URL`, and the API accepts browser calls only from the origins in `CORS_ORIGINS`.
+Every setup needs the same few settings (full list in [Configuration](configuration.md)):
 
-## API on Render
+| Variable | Typical value |
+|---|---|
+| `TRUST_ANCHORS` | `kind:id=0xowner` for each resource you protect |
+| `ARKIV_API_KEY` | your key from [hub.arkiv.network](https://hub.arkiv.network/api-keys) |
+| `ARKIV_PROJECT_ID` | a namespace of your own, e.g. `acme-agents-prod` |
+| `ARKIV_ISSUER_KEYS` | empty for read-only, or the keys of the issuers that publish through this server |
+| `CORS_ORIGINS` | your web app's origin, if a browser calls the API |
 
-1. Seed demo principals once if you haven't: `scripts/seed-arkiv.sh` (needs a funded `apps/arkiv-adapter/.env`).
-2. Generate the variables: `scripts/render-env.sh`. It writes `.mandate-demo/render.env` (gitignored) and prints only the variable names.
-3. Render → **New → Web Service** → `1888-Labs/Mandate`. Language **Docker**, branch `main`, instance type **Free**. Leave the start command empty; Render sets `PORT` and the container reads it.
-4. **Environment Variables → Add from .env**: paste the contents of `.mandate-demo/render.env`.
-5. **Advanced → Health Check Path**: `/health`. Deploy, then check `https://<service>.onrender.com/health` and `/v1/demo`.
+## Render
 
-Free services sleep after 15 minutes without traffic. [`.github/workflows/keep-awake.yml`](../.github/workflows/keep-awake.yml) calls `/health` every 5 minutes once `MANDATE_API_URL` is set, so the demo stays awake for judges.
+**One click:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/1888-Labs/Mandate). Render reads [`render.yaml`](../render.yaml), builds the Dockerfile, and asks you for the secret values.
 
-| Variable | What it is |
-| --- | --- |
-| `ARKIV_PRIVATE_KEY` | Funder wallet that tops up issuer wallets with gas. Testnet only. |
-| `ARKIV_API_KEY` | Arkiv query budget (https://hub.arkiv.network/api-keys). |
-| `ARKIV_ISSUER_KEYS` | Alice's and FinanceAgent's keys, so each entity's `$creator` is its issuer. |
-| `DEMO_KEYS` | Synthetic demo principals for the web sandbox. |
-| `TRUST_ANCHORS` | `wallet:treasury-demo=<Alice's address>`. |
-| `CORS_ORIGINS` | `https://1888-labs.github.io` |
-| `ARKIV_PROJECT_ID` | Namespace, default `mandate-global-tour-2026`. |
+**By hand:** New → **Web Service** → your fork of the repository. Language **Docker**, health check path `/health`. Add your variables under **Environment**, and leave `PORT` unset because Render provides it.
 
-All keys are synthetic testnet demo keys. Never put a real key in these variables.
+> [!NOTE]
+> Render's free instances sleep after 15 minutes without traffic, and the first request after that waits about a minute. For anything real, use a paid instance. If you must stay on the free tier, call `/health` every few minutes. [`keep-awake.yml`](../.github/workflows/keep-awake.yml) does this from GitHub Actions.
 
-## Point the UI at the API
+## Fly.io
 
 ```bash
-gh variable set MANDATE_API_URL --body https://<domain>
+fly launch --image ghcr.io/1888-labs/mandate:latest --internal-port 8080 --no-deploy
+fly secrets set TRUST_ANCHORS="wallet:treasury=0x…" ARKIV_API_KEY=… ARKIV_PROJECT_ID=acme-agents-prod
+fly deploy
+```
+
+Add a health check on `/health` in the generated `fly.toml`, and keep at least one machine running (`min_machines_running = 1`) so checks never wait for a cold start.
+
+## Any server with Docker
+
+On a VM (any cloud, or your own hardware):
+
+```bash
+git clone https://github.com/1888-Labs/Mandate && cd Mandate
+cp docker.env.example docker.env      # fill it in
+docker compose up -d                  # pulls ghcr.io/1888-labs/mandate, restarts on failure
+```
+
+Put TLS in front of it. With [Caddy](https://caddyserver.com), this is the whole config:
+
+```text
+mandate.example.com {
+  reverse_proxy localhost:8080
+}
+```
+
+Behind nginx, turn off response buffering for `/v1/events` (`proxy_buffering off;`), because it is a Server-Sent Events stream. To upgrade, run `docker compose pull && docker compose up -d`.
+
+## Production checklist
+
+- **Pin the image.** Use `ghcr.io/1888-labs/mandate:sha-<commit>` or a version tag, not `latest`.
+- **Use your own namespace.** A unique `ARKIV_PROJECT_ID` means your server only ever reads your entities.
+- **Review `TRUST_ANCHORS` like an access policy.** It decides who can start a chain of authority at all.
+- **Prefer read-only.** If your tools only check authorizations, leave `ARKIV_ISSUER_KEYS` empty. Publish from wherever your signing keys already live.
+- **Guard issuer keys.** If the server does publish, keep the keys in your platform's secret store, never in the image or the repository, and give each issuer wallet only the gas it needs.
+- **Set an Arkiv API key.** Every decision reads Arkiv; without a key you share a small anonymous budget, and running out means `503 STATE_UNAVAILABLE`.
+- **Don't expose the adapter.** Only `mandate-server`'s port should be reachable. In the container the adapter listens on loopback only.
+- **Restrict `CORS_ORIGINS`** to your own web origins, or leave it empty if only servers call the API.
+- **Leave `DEMO_KEYS` unset.** Demo mode is for the public demo only.
+- **Fail closed in your tools.** Treat anything but `"decision": "ALLOW"` as a no, including timeouts and `5xx`. See [Integrate](https://1888-labs.github.io/Mandate/docs/integrate).
+- **Monitor** `GET /health`, and alert on `503` rates from `/v1/authorize`.
+- **Keep the logs.** Every decision is logged with its subject, action, resource and mandate ID or deny reason (never keys), which is your audit trail.
+
+## How the public demo is hosted
+
+The public demo is a working example of the setup above.
+
+- **API:** https://mandate-94oq.onrender.com, the same container on Render's free tier, kept awake by [`keep-awake.yml`](../.github/workflows/keep-awake.yml). It runs with `DEMO_KEYS` for the web sandbox and `CORS_ORIGINS=https://1888-labs.github.io`. Its variables are generated from the seeded demo principals by [`scripts/render-env.sh`](../scripts/render-env.sh), after [`scripts/seed-arkiv.sh`](../scripts/seed-arkiv.sh) has published the dataset. All of its keys are synthetic testnet keys.
+- **Docs and web UI:** GitHub Pages, built by [`pages.yml`](../.github/workflows/pages.yml). The docs are at https://1888-labs.github.io/Mandate/ and the UI at https://1888-labs.github.io/Mandate/demo/. The UI finds the API through the repository variable `MANDATE_API_URL`:
+
+```bash
+gh variable set MANDATE_API_URL --body https://<your-api>
 gh workflow run pages.yml
 ```
+
+- **Image:** [`docker.yml`](../.github/workflows/docker.yml) publishes `ghcr.io/1888-labs/mandate` on every push to `main`.
