@@ -245,15 +245,19 @@ export function handler(
 
 if (import.meta.main) {
   const projectId = process.env.ARKIV_PROJECT_ID ?? "mandate-global-tour-2026"
+  // viem only accepts 0x-prefixed keys; hosting dashboards often get them pasted without.
+  const asKey = (k: string) => (k.startsWith("0x") ? k : `0x${k}`) as Hex
+  const privateKey = process.env.ARKIV_PRIVATE_KEY?.trim()
   const arkiv = connect({
     projectId,
     rpcUrl: process.env.ARKIV_RPC_URL || undefined,
     apiKey: process.env.ARKIV_API_KEY || undefined,
-    privateKey: (process.env.ARKIV_PRIVATE_KEY as Hex | undefined) || undefined,
+    privateKey: privateKey ? asKey(privateKey) : undefined,
     issuerKeys: (process.env.ARKIV_ISSUER_KEYS ?? "")
       .split(",")
       .map((k) => k.trim())
-      .filter((k) => k.length > 0) as Hex[],
+      .filter((k) => k.length > 0)
+      .map(asKey),
   })
   const port = Number(process.env.PORT ?? 8787)
   const host = process.env.HOST ?? "127.0.0.1"
