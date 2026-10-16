@@ -5,6 +5,8 @@ import { defineConfig } from "vite"
 const api = process.env.MANDATE_API ?? "http://127.0.0.1:8080"
 
 export default defineConfig({
+  // GitHub Pages serves the UI under /<repo>/ (BASE_PATH=/Mandate/).
+  base: process.env.BASE_PATH ?? "/",
   plugins: [react()],
   server: {
     port: 5173,

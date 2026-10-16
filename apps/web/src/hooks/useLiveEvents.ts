@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
+import { API_URL } from "../api"
 import type { LiveEvent } from "../types"
 
 export type LiveStatus = "off" | "connecting" | "live" | "reconnecting"
@@ -19,7 +20,7 @@ export function useLiveEvents(enabled: boolean, onEvent: (e: LiveEvent) => void)
       setStatus("off")
       return
     }
-    const source = new EventSource("/v1/events")
+    const source = new EventSource(`${API_URL}/v1/events`)
     source.addEventListener("ready", () => setStatus("live"))
     source.addEventListener("arkiv", (msg) => {
       let event: LiveEvent

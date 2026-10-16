@@ -2,8 +2,12 @@ import type { Chain, Decision, DemoInfo, Hex, MandateStatus, Resource, SandboxCr
 
 export class ApiError extends Error {}
 
+// Where mandate-server lives. Empty means same origin (dev proxy, or the
+// server serving the UI itself); the GitHub Pages build sets VITE_API_URL.
+export const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "")
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...init })
+  const res = await fetch(API_URL + path, { headers: { "content-type": "application/json" }, ...init })
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
   // A denial is a successful answer, not an error.
   if (!res.ok && !("decision" in body)) {
