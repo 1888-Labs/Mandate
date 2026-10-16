@@ -9,6 +9,8 @@
 //!                   the web UI's sandbox. Testnet demo principals only.
 //!   DEMO_RESOURCE   the demo's resource (default wallet:treasury-demo)
 //!   WEB_DIR         the built web UI (default apps/web/dist)
+//!   CORS_ORIGINS    origins allowed to call the API from a browser, comma-separated
+//!                   (e.g. https://1888-labs.github.io for the GitHub Pages UI)
 //!   HOST, PORT      listen address (default 127.0.0.1:8080)
 //!   RUST_LOG        log filter (default info)
 
@@ -21,6 +23,8 @@ use mandate_server::backend::{Backend, MemoryBackend};
 use mandate_server::config::parse_trust_anchors;
 use mandate_server::demo::Demo;
 use mandate_server::{router, AppState, Clock};
+use axum::http::{header, HeaderValue, Method};
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 fn env(name: &str) -> Option<String> {
@@ -64,7 +68,7 @@ async fn serve<B: Backend>(
             web_dir.display()
         );
     }
-    let app = router(AppState {
+    let mut app = router(AppState {
         backend,
         anchors,
         clock: system_clock(),
@@ -72,6 +76,20 @@ async fn serve<B: Backend>(
         events_url,
         web_dir: Some(web_dir),
     });
+    if let Some(origins) = env("CORS_ORIGINS") {
+        let origins = origins
+            .split(',')
+            .map(|o| o.trim().parse())
+            .collect::<Result<Vec<HeaderValue>, _>>()
+            .map_err(|e| format!("CORS_ORIGINS: {e}"))?;
+        info!("CORS: allowing {origins:?}");
+        app = app.layer(
+            CorsLayer::new()
+                .allow_origin(origins)
+                .allow_methods([Method::GET, Method::POST])
+                .allow_headers([header::CONTENT_TYPE]),
+        );
+    }
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|e| format!("bind {addr}: {e}"))?;
