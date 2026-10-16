@@ -1,61 +1,150 @@
 ---
 title: Mandate · Authorization for AI agents
-layout: landing
+description: Give an AI agent signed, narrowly scoped authority, let it delegate only a smaller slice, and revoke it any time. Every action gets an explained ALLOW or DENY, decided live from Arkiv.
+layout: minimal
+content:
+  width: full
+outline: false
+showSidebar: false
 showAskAi: false
 ---
 
 import { HomePage, Link } from 'vocs'
 import { BuiltBy } from '../components/BuiltBy'
 
-<HomePage.Root>
-  <HomePage.Logo />
-  <HomePage.Tagline>The prompt is not the security boundary. Mandate is.</HomePage.Tagline>
-  {/* Keep on one line: multi-line text inside JSX becomes a <p>, nested in Description's own <p>. */}
-  <HomePage.Description>Give an AI agent signed, narrowly scoped authority. Let it delegate only a smaller slice. Revoke it any time. Every action gets an explained ALLOW or DENY, decided live from Arkiv.</HomePage.Description>
-  <HomePage.Buttons>
-    <HomePage.Button href="/docs/quickstart" variant="accent">Get started</HomePage.Button>
-    <HomePage.Button href="https://1888-labs.github.io/Mandate/demo/">Try the live demo</HomePage.Button>
-    <HomePage.Button href="/docs/concepts">Concepts in 5 minutes</HomePage.Button>
-    <HomePage.Button href="https://github.com/1888-Labs/Mandate">GitHub</HomePage.Button>
-  </HomePage.Buttons>
-</HomePage.Root>
+<div className="mx-page">
 
-<div className="mx-section">
-  <div className="mx-eyebrow">Why Mandate</div>
-  <div className="mx-grid">
-    <Link className="mx-card" to="/docs/concepts#mandate"><span className="mx-icon">✍︎</span><b>Signed, scoped authority</b><span>Grant an agent exactly what it needs: an action, a resource, a limit, a list of recipients, a lifetime. Signed by the issuer, so it can't be forged.</span></Link>
-    <Link className="mx-card" to="/docs/concepts#delegation"><span className="mx-icon">↧</span><b>Delegation that only narrows</b><span>Agents can hand other agents a smaller slice, never a bigger one. Escalation is rejected before anything is stored.</span></Link>
-    <Link className="mx-card" to="/docs/concepts#revocation"><span className="mx-icon">✂︎</span><b>Revoke a whole branch</b><span>Take back one grant and everything delegated beneath it stops on the next check. No tokens to chase down.</span></Link>
-    <Link className="mx-card" to="/docs/deny-codes"><span className="mx-icon">?</span><b>Every decision explained</b><span>ALLOW with the full chain of evidence, or DENY with a stable reason code like AMOUNT_EXCEEDED or ANCESTOR_REVOKED.</span></Link>
-    <Link className="mx-card" to="/arkiv/schema"><span className="mx-icon">◆</span><b>Public, tamper-proof record</b><span>Mandates live on Arkiv, published from the issuer's own wallet. Revocations can't be deleted, not even by their issuer.</span></Link>
-    <Link className="mx-card" to="/docs/faq#what-happens-if-arkiv-is-down"><span className="mx-icon">⛌</span><b>Fails closed</b><span>If state can't be read, the answer is never a guess. Your tool refuses to act until Mandate can decide.</span></Link>
+<div className="mx-hero">
+  <div>
+    <div className="mx-kicker">by 1888 Labs</div>
+    <div className="mx-wordmark">Mandate</div>
+    <div className="mx-hero-tagline">The prompt is not the security boundary. Mandate is.</div>
+    <div className="mx-hero-copy">Give an AI agent signed, narrowly scoped authority. Let it delegate only a smaller slice. Revoke it any time. Every action gets an explained ALLOW or DENY, decided live from Arkiv.</div>
+    <div className="mx-hero-buttons">
+      <HomePage.Button href="/docs/quickstart" variant="accent">Get started</HomePage.Button>
+      <HomePage.Button href="https://1888-labs.github.io/Mandate/demo/">Live demo</HomePage.Button>
+      <HomePage.Button href="https://github.com/1888-Labs/Mandate">GitHub</HomePage.Button>
+    </div>
+    <div className="mx-badges">
+      <div className="mx-badge"><span>engine</span><span>Rust</span></div>
+      <div className="mx-badge"><span>state</span><span>Arkiv</span></div>
+      <div className="mx-badge"><span>license</span><span>MIT</span></div>
+    </div>
+  </div>
+  <div className="mx-install">
+
+:::code-group
+
+```bash [Ask before acting]
+# InvoiceAgent may spend $300. It asks for $700.
+curl https://mandate-94oq.onrender.com/v1/authorize \
+  -H 'content-type: application/json' -d '{
+    "subject": "0x97e80edf5d361855f64ff09a3d2cbf37b9f7e772",
+    "action": "transfer",
+    "resource": {"kind": "wallet", "id": "treasury-demo"},
+    "amount": 700,
+    "recipient": "AWS"
+  }'
+```
+
+```json [Get an explained answer]
+{
+  "decision": "DENY",
+  "reason": "AMOUNT_EXCEEDED",
+  "message": "Requested 700 exceeds the delegated maximum of 300.",
+  "requestedAmount": 700,
+  "maximumAmount": 300,
+  "delegationPath": ["0xa090…d2a4", "0x2141…44c4", "0x97e8…7772"]
+}
+```
+
+```bash [CLI]
+mandate check --agent invoice-agent --action transfer \
+  --resource wallet:treasury-demo --amount 700 --recipient AWS
+
+# ✗ DENIED  AMOUNT_EXCEEDED  (requested $700, maximum $300)
+```
+
+:::
+
   </div>
 </div>
 
 <div className="mx-section">
-  <div className="mx-eyebrow">How it works</div>
-  <div className="mx-steps">
-    <div className="mx-step"><span className="mx-n">01</span><b>Grant</b><span>Alice lets FinanceAgent transfer up to $1,000, to AWS only, and pass some of that on.</span></div>
-    <div className="mx-step"><span className="mx-n">02</span><b>Delegate</b><span>FinanceAgent gives InvoiceAgent a smaller slice: up to $300.</span></div>
-    <div className="mx-step"><span className="mx-n">03</span><b>Check</b><span>Before paying, the payment tool asks Mandate. $200 → AWS is ALLOW; $700 is DENY.</span></div>
-    <div className="mx-step"><span className="mx-n">04</span><b>Revoke</b><span>Alice revokes her grant. Both agents lose their authority on the next check.</span></div>
+  <div className="mx-grid">
+    <div className="mx-card"><div className="mx-card-title">Signed, scoped authority</div><div className="mx-card-copy">An action, a resource, a limit, the allowed recipients and a lifetime. Signed by the issuer, so it can't be forged. <Link to="/docs/concepts#mandate">Concepts</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Delegation only narrows</div><div className="mx-card-copy">An agent can hand another agent a smaller slice, never a bigger one. Escalation is refused before anything is stored. <Link to="/docs/concepts#delegation">Delegation</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Revoke a whole branch</div><div className="mx-card-copy">Revoke one grant and everything delegated beneath it stops on the next check. <Link to="/docs/concepts#revocation">Revocation</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Every decision explained</div><div className="mx-card-copy">ALLOW with the full chain of authority, or DENY with a stable code like <code>ANCESTOR_REVOKED</code>. <Link to="/docs/deny-codes">Deny codes</Link></div></div>
+  </div>
+</div>
+
+<div className="mx-section mx-split">
+  <div>
+    <div className="mx-eyebrow">How it works</div>
+    <div className="mx-section-title">Grant, delegate, check, revoke</div>
+    <ol className="mx-steps">
+      <li><b>Grant.</b> Alice lets FinanceAgent transfer up to $1,000, to AWS only, and pass some of that on.</li>
+      <li><b>Delegate.</b> FinanceAgent gives InvoiceAgent a smaller slice: up to $300.</li>
+      <li><b>Check.</b> Before paying, the tool asks Mandate. $200 to AWS is ALLOW. $700 is DENY.</li>
+      <li><b>Revoke.</b> Alice revokes her grant. Both agents lose their authority on the next check.</li>
+    </ol>
+    <div className="mx-hero-buttons">
+      <HomePage.Button href="/docs/library">Rust library</HomePage.Button>
+      <HomePage.Button href="/docs/integrate">Integrate over HTTP</HomePage.Button>
+    </div>
+  </div>
+  <div>
+
+```rust [Delegation only narrows]
+// M2 gives InvoiceAgent $300 of FinanceAgent's $1000.
+can_delegate(&m1, &m2)?; // Ok: M2 only narrows M1.
+
+// Now FinanceAgent tries to hand out $5000.
+let escalated = sign_mandate(
+    &UnsignedMandate {
+        constraints: Constraints {
+            max_amount: Some(5000),
+            ..m2.constraints.clone()
+        },
+        ..m2.unsigned()
+    },
+    &finance_agent,
+)?;
+assert_eq!(
+    can_delegate(&m1, &escalated),
+    Err(DelegationError::AmountEscalation),
+);
+```
+
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">On Arkiv</div>
+  <div className="mx-section-title">A public record nobody can quietly rewrite</div>
+  <div className="mx-grid" data-cols="3">
+    <div className="mx-card"><div className="mx-card-title">Published by the issuer</div><div className="mx-card-copy">Each mandate is written from its issuer's own wallet, so the on-chain <code>$creator</code> proves who granted it. <Link to="/arkiv/schema">Schema</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Revocations stick</div><div className="mx-card-copy">Revocations are owned by the burn address. Not even their issuer can delete them.</div></div>
+    <div className="mx-card"><div className="mx-card-title">Fails closed</div><div className="mx-card-copy">If state can't be read, the answer is <code>STATE_UNAVAILABLE</code>, never a guess. <Link to="/docs/security">Security</Link></div></div>
   </div>
 </div>
 
 <div className="mx-section">
   <div className="mx-eyebrow">Built for</div>
-  <div className="mx-grid mx-grid-4">
-    <Link className="mx-card mx-small" to="/docs/use-cases#payments-and-finance-agents"><b>Payment agents</b><span>Limits and approved vendors that a prompt injection can't talk past.</span></Link>
-    <Link className="mx-card mx-small" to="/docs/use-cases#tools-behind-mcp-servers"><b>MCP tools</b><span>Each connected agent can only use what it was granted.</span></Link>
-    <Link className="mx-card mx-small" to="/docs/use-cases#devops-and-infrastructure-agents"><b>DevOps agents</b><span>Staging yes, production only with a human's mandate.</span></Link>
-    <Link className="mx-card mx-small" to="/docs/use-cases#multi-agent-systems"><b>Multi-agent systems</b><span>Orchestrators hand sub-agents exactly the slice they need.</span></Link>
+  <div className="mx-grid">
+    <Link className="mx-card mx-link" to="/docs/use-cases#payments-and-finance-agents"><div className="mx-card-title">Payment agents</div><div className="mx-card-copy">Limits and approved vendors a prompt injection can't talk past.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/use-cases#tools-behind-mcp-servers"><div className="mx-card-title">MCP tools</div><div className="mx-card-copy">Each connected agent can only use what it was granted.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/use-cases#devops-and-infrastructure-agents"><div className="mx-card-title">DevOps agents</div><div className="mx-card-copy">Staging yes, production only with a human's mandate.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/use-cases#multi-agent-systems"><div className="mx-card-title">Multi-agent systems</div><div className="mx-card-copy">Orchestrators hand sub-agents exactly the slice they need.</div></Link>
   </div>
 </div>
 
-<div className="mx-section mx-cta">
-  <b>Protect your first tool in 10 minutes.</b>
-  <span>One HTTP call before your tool acts. Works from any language.</span>
-  <Link className="mx-button" to="/docs/integrate">Read the integration guide →</Link>
+<BuiltBy />
+
+<div className="mx-footer">
+  <span>MIT licensed · Built for the Arkiv Global Tour Stop</span>
+  <span><Link to="/docs/introduction">Docs</Link> · <Link to="/arkiv/schema">Arkiv schema</Link> · <a href="https://github.com/1888-Labs/Mandate">GitHub</a></span>
 </div>
 
-<BuiltBy />
+</div>
