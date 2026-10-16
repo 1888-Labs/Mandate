@@ -48,11 +48,11 @@ Give an AI agent narrowly scoped, signed authority. Let it hand a *smaller* piec
 
 | | |
 |---|---|
-| **Live demo** | *coming soon* |
+| **Live demo** | https://1888-labs.github.io/Mandate/demo/ (API: https://mandate-94oq.onrender.com, on Arkiv Tiramisu) |
 | **Demo video** | *coming soon* |
 | **Arkiv schema** | [`arkiv/schema.md`](arkiv/schema.md) |
 | **Arkiv friction report** | [`arkiv/friction.md`](arkiv/friction.md) |
-| **Docs site** | *coming soon* (built with [Vocs](https://vocs.dev), from [`apps/docs`](apps/docs)) · [`docs/`](#documentation) on GitHub |
+| **Docs site** | https://1888-labs.github.io/Mandate/ (built with [Vocs](https://vocs.dev), from [`apps/docs`](apps/docs)) · [`docs/`](#documentation) on GitHub |
 
 ---
 

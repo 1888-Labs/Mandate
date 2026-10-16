@@ -2,7 +2,7 @@
 
 The public demo has two halves:
 
-- **Web UI** on GitHub Pages: https://1888-labs.github.io/Mandate/. Built and published by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) on every push to `main` that touches `apps/web`.
+- **Docs and web UI** on GitHub Pages: the [Vocs](https://vocs.dev) docs site at https://1888-labs.github.io/Mandate/ and the demo UI at https://1888-labs.github.io/Mandate/demo/. Built and published by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) on every push to `main` that touches `apps/docs`, `apps/web`, `docs/` or `arkiv/`.
 - **API** on Render (free web service): one container ([`Dockerfile`](../Dockerfile)) running `mandate-server` on `$PORT` and `arkiv-adapter` on loopback ([`scripts/container-start.sh`](../scripts/container-start.sh)). The server also serves the UI, so the Render URL works on its own.
 
 The UI finds the API through the repository variable `MANDATE_API_URL`, and the API accepts browser calls only from the origins in `CORS_ORIGINS`.
