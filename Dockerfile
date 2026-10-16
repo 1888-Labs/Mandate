@@ -24,7 +24,7 @@ COPY apps/arkiv-adapter/package.json apps/arkiv-adapter/package-lock.json apps/a
 RUN cd apps/arkiv-adapter && npm ci --omit=dev
 COPY apps/arkiv-adapter/src apps/arkiv-adapter/src
 COPY --from=server /src/target/release/mandate-server /usr/local/bin/mandate-server
-# The server also serves the UI, so the Railway URL works on its own too.
+# The server also serves the UI, so the Render URL works on its own too.
 COPY --from=web /src/apps/web/dist apps/web/dist
 COPY scripts/container-start.sh /usr/local/bin/container-start
 USER node

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Write the hosted API's environment variables to .mandate-demo/railway.env
-# (gitignored), ready to paste into Railway → Variables → Raw Editor.
+# Write the hosted API's environment variables to .mandate-demo/render.env
+# (gitignored), ready to paste into Render → Environment → Add from .env.
 # Values come from apps/arkiv-adapter/.env and the demo principals created by
 # scripts/seed-arkiv.sh. Secrets are written to the file, never printed.
 #
-#   scripts/railway-env.sh [pages-origin]   # default https://1888-labs.github.io
+#   scripts/render-env.sh [pages-origin]   # default https://1888-labs.github.io
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT/apps/arkiv-adapter/.env"
 KEYS="$ROOT/.mandate-demo/keys.json"
-OUT="$ROOT/.mandate-demo/railway.env"
+OUT="$ROOT/.mandate-demo/render.env"
 ORIGIN="${1:-https://1888-labs.github.io}"
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE" >&2; exit 1; }
 [ -f "$KEYS" ] || { echo "no demo principals: run scripts/seed-arkiv.sh first" >&2; exit 1; }
