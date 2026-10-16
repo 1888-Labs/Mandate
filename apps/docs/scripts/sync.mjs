@@ -39,6 +39,8 @@ function rewrite(target, fromFile) {
   return `${github}/${kind}/main/${resolved}${anchor ? `#${anchor}` : ""}`
 }
 
+const callouts = { NOTE: "note", TIP: "tip", IMPORTANT: "info", WARNING: "warning", CAUTION: "danger" }
+
 for (const [from, to] of sources) {
   let text = readFileSync(join(repo, from), "utf8")
   // The "back to README" links make no sense inside the site.
@@ -48,6 +50,11 @@ for (const [from, to] of sources) {
     .split(/(```[\s\S]*?```)/g)
     .map((chunk, i) => (i % 2 ? chunk : chunk.replace(/\]\(([^)\s]+)\)/g, (_, t) => `](${rewrite(t, from)})`)))
     .join("")
+  // GitHub alerts (> [!WARNING]) render on GitHub; Vocs needs its own callouts.
+  text = text.replace(/^> \[!(\w+)\]\n((?:>.*\n?)*)/gm, (_, kind, body) => {
+    const type = callouts[kind.toUpperCase()] ?? "note"
+    return `:::${type}\n${body.replace(/^> ?/gm, "").trimEnd()}\n:::\n`
+  })
   const out = join(site, "pages", to)
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, text)

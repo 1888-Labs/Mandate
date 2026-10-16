@@ -4,7 +4,10 @@ const repo = "https://github.com/1888-Labs/Mandate"
 
 // GitHub Pages serves the docs at https://1888-labs.github.io/Mandate/ and the
 // live demo UI under /Mandate/demo/. Override with VOCS_BASE_PATH=/ locally.
-const basePath = (process.env.VOCS_BASE_PATH ?? "/Mandate").replace(/\/+$/, "") || "/"
+const env = (globalThis as typeof globalThis & {
+  process?: { env?: Record<string, string | undefined> }
+}).process?.env
+const basePath = (env?.VOCS_BASE_PATH ?? "/Mandate").replace(/\/+$/, "") || "/"
 /** Public files need the base path; Vocs doesn't prefix icon or head URLs. */
 const asset = (file: string) => (basePath === "/" ? `/${file}` : `${basePath}/${file}`)
 const demo = "https://1888-labs.github.io/Mandate/demo/"
@@ -42,7 +45,8 @@ export default defineConfig({
   socials: [{ icon: "github", link: repo }],
   topNav: [
     { text: "Docs", link: "/docs/introduction", match: "/docs" },
-    { text: "Integrate", link: "/docs/integrate" },
+    { text: "API", link: "/docs/api" },
+    { text: "Self-host", link: "/docs/self-hosting" },
     { text: "Arkiv", link: "/arkiv/schema", match: "/arkiv" },
     { text: "Live demo", link: demo },
   ],
@@ -60,8 +64,18 @@ export default defineConfig({
       text: "Guides",
       items: [
         { text: "Integrate in 10 minutes", link: "/docs/integrate" },
+        { text: "Public test API", link: "/docs/public-api" },
         { text: "CLI", link: "/docs/cli" },
         { text: "Rust library", link: "/docs/library" },
+      ],
+    },
+    {
+      text: "Self-hosting",
+      items: [
+        { text: "Run with Docker", link: "/docs/self-hosting" },
+        { text: "Deploy to production", link: "/docs/deployment" },
+        { text: "Configuration", link: "/docs/configuration" },
+        { text: "Troubleshooting", link: "/docs/troubleshooting" },
       ],
     },
     {

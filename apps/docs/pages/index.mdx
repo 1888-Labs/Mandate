@@ -58,6 +58,13 @@ curl https://mandate-94oq.onrender.com/v1/authorize \
 }
 ```
 
+```bash [Self-host]
+# Your own API and web UI on http://localhost:8080
+docker run -p 8080:8080 -e MANDATE_BACKEND=memory \
+  -e TRUST_ANCHORS="wallet:treasury=0xALICE" \
+  ghcr.io/1888-labs/mandate
+```
+
 ```bash [CLI]
 mandate check --agent invoice-agent --action transfer \
   --resource wallet:treasury-demo --amount 700 --recipient AWS
@@ -127,6 +134,17 @@ assert_eq!(
     <div className="mx-card"><div className="mx-card-title">Published by the issuer</div><div className="mx-card-copy">Each mandate is written from its issuer's own wallet, so the on-chain <code>$creator</code> proves who granted it. <Link to="/arkiv/schema">Schema</Link></div></div>
     <div className="mx-card"><div className="mx-card-title">Revocations stick</div><div className="mx-card-copy">Revocations are owned by the burn address. Not even their issuer can delete them.</div></div>
     <div className="mx-card"><div className="mx-card-title">Fails closed</div><div className="mx-card-copy">If state can't be read, the answer is <code>STATE_UNAVAILABLE</code>, never a guess. <Link to="/docs/security">Security</Link></div></div>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">Run it your way</div>
+  <div className="mx-section-title">From a curl to production</div>
+  <div className="mx-grid">
+    <Link className="mx-card mx-link" to="/docs/public-api"><div className="mx-card-title">Public test API</div><div className="mx-card-copy">Call a hosted API with live demo data on Arkiv. Nothing to install.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/self-hosting"><div className="mx-card-title">Docker</div><div className="mx-card-copy">One container with the API and web UI. In-memory in a minute, or on Arkiv with Compose.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/deployment"><div className="mx-card-title">Production</div><div className="mx-card-copy">Render in one click, Fly.io, or any server behind TLS. With a checklist.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/api"><div className="mx-card-title">API reference</div><div className="mx-card-copy">Every endpoint, document and error code, with real responses.</div></Link>
   </div>
 </div>
 
