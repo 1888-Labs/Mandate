@@ -225,7 +225,8 @@ Protect a tool by asking Mandate before it acts, and only proceeding on ALLOW. T
 | [Architecture](docs/architecture.md) | Components, how a decision is made, repository layout |
 | [HTTP API](docs/api.md) · [Public test API](docs/public-api.md) · [CLI](docs/cli.md) · [Library](docs/library.md) | Using Mandate |
 | [Self-hosting](docs/self-hosting.md) · [Deploying](docs/deployment.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) | Running your own API |
-| [Development](docs/development.md) | Building, testing, roadmap |
+| [Development](docs/development.md) | Building and testing |
+| [Roadmap](docs/roadmap.md) | Where Mandate is going next |
 | [Inspiration](docs/inspiration.md) | Google Zanzibar and related work |
 | [Arkiv schema](arkiv/schema.md) · [Friction report](arkiv/friction.md) | Arkiv integration |
 

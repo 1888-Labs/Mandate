@@ -102,6 +102,7 @@ export default defineConfig({
       text: "Project",
       items: [
         { text: "FAQ", link: "/docs/faq" },
+        { text: "Roadmap", link: "/docs/roadmap" },
         { text: "Development", link: "/docs/development" },
         { text: "Inspiration", link: "/docs/inspiration" },
       ],
