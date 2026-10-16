@@ -1,11 +1,13 @@
-# Publishes the web UI to GitHub Pages. The UI calls the hosted mandate-server
-# at the repository variable MANDATE_API_URL (Settings → Variables → Actions).
+# Publishes https://1888-labs.github.io/Mandate/ to GitHub Pages:
+#   /        the Vocs docs site (apps/docs, synced from docs/ and arkiv/)
+#   /demo/   the web UI (apps/web), calling the hosted mandate-server at the
+#            repository variable MANDATE_API_URL (Settings → Variables → Actions)
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["apps/web/**", ".github/workflows/pages.yml"]
+    paths: ["apps/web/**", "apps/docs/**", "docs/**", "arkiv/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -20,24 +22,34 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npm run build
+          cache-dependency-path: |
+            apps/docs/package-lock.json
+            apps/web/package-lock.json
+      - name: Build docs
+        working-directory: apps/docs
+        run: npm ci && npm run build
         env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+          VOCS_BASE_PATH: /${{ github.event.repository.name }}
+      - name: Build demo UI
+        working-directory: apps/web
+        run: npm ci && npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/demo/
           VITE_API_URL: ${{ vars.MANDATE_API_URL }}
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp -r apps/docs/dist/public/. _site/
+          cp -r apps/web/dist _site/demo
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: _site
 
   deploy:
     needs: build
