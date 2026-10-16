@@ -1,0 +1,24 @@
+# Render Blueprint: one-click deploy of your own Mandate API.
+# https://render.com/deploy?repo=https://github.com/1888-Labs/Mandate
+# Render asks for the `sync: false` values when you create it. See docs/deployment.md.
+services:
+  - type: web
+    name: mandate
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: TRUST_ANCHORS
+        sync: false
+      - key: ARKIV_API_KEY
+        sync: false
+      - key: ARKIV_ISSUER_KEYS
+        sync: false
+      - key: ARKIV_PRIVATE_KEY
+        sync: false
+      - key: ARKIV_PROJECT_ID
+        value: mandate-global-tour-2026
+      - key: CORS_ORIGINS
+        sync: false
+      - key: RUST_LOG
+        value: info
