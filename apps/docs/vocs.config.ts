@@ -2,13 +2,39 @@ import { defineConfig } from "vocs/config"
 
 const repo = "https://github.com/1888-Labs/Mandate"
 
+// GitHub Pages serves the docs at https://1888-labs.github.io/Mandate/ and the
+// live demo UI under /Mandate/demo/. Override with VOCS_BASE_PATH=/ locally.
+const basePath = (process.env.VOCS_BASE_PATH ?? "/Mandate").replace(/\/+$/, "") || "/"
+/** Public files need the base path; Vocs doesn't prefix icon or head URLs. */
+const asset = (file: string) => (basePath === "/" ? `/${file}` : `${basePath}/${file}`)
+const demo = "https://1888-labs.github.io/Mandate/demo/"
+
 export default defineConfig({
   title: "Mandate",
   titleTemplate: "%s · Mandate",
   description: "Verifiable delegated authorization for AI agents, on Arkiv.",
-  // Mandate's indigo, as in the web app.
-  accentColor: "light-dark(#181ea9, #7a80ea)",
-  iconUrl: "/icon.svg",
+  basePath,
+  baseUrl: "https://1888-labs.github.io",
+  // 1888 Labs brand kit: Ink on Paper, Signal orange on Ink. Signal fails
+  // contrast as text on Paper, so light mode uses Ink as the accent.
+  accentColor: "light-dark(#0F1115, #FF5B22)",
+  colorScheme: "light dark",
+  iconUrl: asset("favicon.svg"),
+  head: {
+    // baseUrl is only for canonical/OG URLs; no <base> tag, so local previews work.
+    base: false,
+    link: [
+      { rel: "icon", href: asset("favicon.ico"), sizes: "48x48" },
+      { rel: "apple-touch-icon", href: asset("apple-touch-icon.png") },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap",
+      },
+    ],
+    meta: { themeColor: "#0F1115" },
+  },
   rootDir: ".",
   srcDir: ".",
   // A plain static site: hostable anywhere, no server needed.
@@ -18,7 +44,7 @@ export default defineConfig({
     { text: "Docs", link: "/docs/introduction", match: "/docs" },
     { text: "Integrate", link: "/docs/integrate" },
     { text: "Arkiv", link: "/arkiv/schema", match: "/arkiv" },
-    { text: "GitHub", link: repo },
+    { text: "Live demo", link: demo },
   ],
   sidebar: [
     {

@@ -1,21 +1,35 @@
-/* Mandate docs: the same brand tokens as the web app (apps/web/src/styles.css):
-   indigo primary, orange signal, warm off-white on near-black, IBM Plex. */
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-sans/700.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+/* Mandate docs in the 1888 Labs brand kit (github.com/1888-Labs, brand-kit/):
+   Ink #0F1115, Paper #F3F1EA, Signal #FF5B22 (under 5% of any page),
+   Graphite #4A4D55. Space Grotesk for text, JetBrains Mono for labels and code.
+   Fonts load in vocs.config.ts. */
 
 :root {
-  --vocs-font-family: "IBM Plex Sans", system-ui, sans-serif;
-  --vocs-font-family-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --mx-indigo: light-dark(#181ea9, #7a80ea);
-  --mx-orange: #fe7446;
-  --mx-line: light-dark(#e5e7eb, #2e2e2e);
-  --mx-panel: light-dark(#ffffff, #161617);
-  --mx-muted: light-dark(#5d6170, #a19d96);
+  --vocs-font-family: "Space Grotesk", system-ui, sans-serif;
+  --vocs-font-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --mx-ink: #0f1115;
+  --mx-paper: #f3f1ea;
+  --mx-signal: #ff5b22;
+  /* Strong accent: Ink on Paper, Paper on Ink. Signal only as a highlight. */
+  --mx-indigo: light-dark(var(--mx-ink), var(--mx-paper));
+  --mx-orange: var(--mx-signal);
+  --mx-line: light-dark(#dcd9cf, #262931);
+  --mx-panel: light-dark(#fbfaf6, #16191f);
+  --mx-muted: light-dark(#4a4d55, #a3a5ab);
 }
+
+/* Vocs' surfaces and text, re-based on Paper and Ink instead of neutral grey. */
+:root {
+  --vocs-background-color-primary: light-dark(#f3f1ea, #0f1115);
+  --vocs-background-color-surface: light-dark(#fbfaf6, #16191f);
+  --vocs-background-color-surfaceMuted: light-dark(#ebe8df, #13161b);
+  --vocs-background-color-surfaceTint: light-dark(#ebe8df, #1c1f26);
+  --vocs-text-color-primary: light-dark(#0f1115, #f3f1ea);
+  --vocs-text-color-secondary: light-dark(#4a4d55, #b4b6bb);
+  --vocs-text-color-muted: light-dark(#5e616a, #8d9097);
+  --vocs-border-color-primary: light-dark(#dcd9cf, #2a2d35);
+  --vocs-border-color-secondary: light-dark(#e6e3da, #22252c);
+}
+h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
 /* ---------- landing ---------- */
 .mx-section { max-width: 1080px; margin: 0 auto; padding: 32px 24px; }
@@ -44,16 +58,15 @@
 .mx-step span:not(.mx-n) { color: var(--mx-muted); font-size: 14px; line-height: 1.55; }
 .mx-n { font: 600 12px var(--vocs-font-family-mono); color: var(--mx-orange); }
 .mx-cta {
-  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; margin: 24px auto 120px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; margin: 24px auto 40px;
   border: 1px solid var(--mx-line); border-radius: 18px; padding: 40px 24px;
   background:
-    radial-gradient(60% 120% at 20% 0%, color-mix(in srgb, var(--mx-indigo) 18%, transparent), transparent),
-    radial-gradient(50% 120% at 90% 100%, color-mix(in srgb, var(--mx-orange) 14%, transparent), transparent),
+    radial-gradient(50% 120% at 90% 100%, color-mix(in srgb, var(--mx-orange) 10%, transparent), transparent),
     var(--mx-panel);
 }
 .mx-cta b { font-size: 22px; letter-spacing: -0.01em; }
 .mx-cta span { color: var(--mx-muted); }
-.mx-button { margin-top: 10px; padding: 10px 18px; border-radius: 10px; background: var(--mx-indigo); color: #fff !important; font-weight: 600; text-decoration: none !important; }
+.mx-button { margin-top: 10px; padding: 10px 18px; border-radius: 10px; background: var(--mx-indigo); color: light-dark(var(--mx-paper), var(--mx-ink)) !important; font-weight: 600; text-decoration: none !important; }
 .mx-button:hover { filter: brightness(1.1); }
 
 @media (max-width: 860px) {
@@ -64,3 +77,11 @@
   .mx-step:nth-child(even) { border-left: 0; }
   .mx-step + .mx-step { border-top: 1px solid var(--mx-line); }
 }
+
+/* ---------- 1888 Labs sign-off ---------- */
+.mx-builtby { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0 auto 140px; }
+.mx-builtby span { font: 500 11px var(--vocs-font-family-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--mx-muted); }
+.mx-builtby img { height: 36px; width: auto; }
+.mx-logo-dark { display: none; }
+[data-vocs-theme="dark"] .mx-logo-light { display: none; }
+[data-vocs-theme="dark"] .mx-logo-dark { display: inline; }

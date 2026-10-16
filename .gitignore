@@ -14,3 +14,6 @@ AGENTS.md
 BUILD_SPEC.md
 .mandate-demo/
 *.tsbuildinfo
+
+# Pages site assembled locally from apps/docs and apps/web.
+/_site
