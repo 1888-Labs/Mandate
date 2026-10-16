@@ -17,3 +17,6 @@ BUILD_SPEC.md
 
 # Pages site assembled locally from apps/docs and apps/web.
 /_site
+
+# Docker environment (see docker.env.example).
+docker.env

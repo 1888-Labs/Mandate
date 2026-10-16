@@ -1,0 +1,15 @@
+# Run Mandate locally or on any server with Docker:
+#
+#   cp docker.env.example docker.env   # fill in TRUST_ANCHORS and Arkiv settings
+#   docker compose up -d               # API and web UI on http://localhost:8080
+#
+# Uses the prebuilt image; `docker compose build` builds it from this checkout.
+# See docs/self-hosting.md.
+services:
+  mandate:
+    image: ghcr.io/1888-labs/mandate:latest
+    build: .
+    env_file: docker.env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

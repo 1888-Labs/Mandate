@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Container entrypoint: arkiv-adapter on loopback, mandate-server on $PORT.
-# If either process exits, the container exits so the host restarts it.
+# Container entrypoint. See docs/self-hosting.md and docs/configuration.md.
 #
-# Required env: ARKIV_PRIVATE_KEY, ARKIV_API_KEY, ARKIV_ISSUER_KEYS,
-# DEMO_KEYS, TRUST_ANCHORS. Optional: CORS_ORIGINS, ARKIV_PROJECT_ID.
+#   MANDATE_BACKEND=arkiv (default)  arkiv-adapter on loopback + mandate-server on $PORT
+#   MANDATE_BACKEND=memory           mandate-server alone, state in memory (for trials)
+#
+# Nothing is strictly required. Without TRUST_ANCHORS no root mandate is
+# trusted, so every check is DENY; without ARKIV_ISSUER_KEYS the adapter is
+# read-only (authorize and reads work, publishing doesn't). If either process
+# exits, the container exits so the host restarts it.
 set -euo pipefail
 
-for name in ARKIV_PRIVATE_KEY ARKIV_ISSUER_KEYS DEMO_KEYS TRUST_ANCHORS; do
-  [ -n "${!name:-}" ] || { echo "missing required env: $name" >&2; exit 1; }
-done
+warn() { echo "container-start: $*" >&2; }
+
+[ -n "${TRUST_ANCHORS:-}" ] || warn "TRUST_ANCHORS is empty: no root mandate is trusted, so every check is DENY"
+
+if [ "${MANDATE_BACKEND:-arkiv}" = "memory" ]; then
+  warn "in-memory backend: nothing is read from or written to Arkiv, and state is lost on restart"
+  exec mandate-server
+fi
+
+[ -n "${ARKIV_API_KEY:-}" ] || warn "ARKIV_API_KEY is empty: the anonymous Arkiv query budget is small"
+[ -n "${ARKIV_ISSUER_KEYS:-}" ] || warn "ARKIV_ISSUER_KEYS is empty: read-only, this server cannot publish mandates"
 
 ADAPTER_PORT=8787
 # The adapter is only reachable from inside the container; the token makes
