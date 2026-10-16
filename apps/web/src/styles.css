@@ -1,32 +1,38 @@
-/* Mandate demo: one column, neutral surfaces, one accent. */
+/* Mandate demo in the 1888 Labs brand kit, matching the docs site:
+   Ink #0F1115, Paper #F3F1EA, Graphite #4A4D55, and Signal #FF5B22 as a
+   small highlight only (it fails contrast as text on Paper). Space Grotesk
+   for text, JetBrains Mono for labels and code; fonts load in index.html. */
 
 :root {
-  --bg: #f7f7f8;
-  --surface: #ffffff;
-  --text: #16161a;
-  --muted: #6b6b76;
-  --line: #e4e4e8;
-  --accent: #3b42c4;
-  --accent-soft: #eef0ff;
+  --bg: #f3f1ea;
+  --surface: #fbfaf6;
+  --text: #0f1115;
+  --muted: #4a4d55;
+  --line: #dcd9cf;
+  --accent: #0f1115;
+  --accent-soft: #e8e5dc;
+  --on-accent: #f3f1ea;
+  --signal: #ff5b22;
   --allow: #15803d;
-  --allow-soft: #ecfdf3;
+  --allow-soft: #e6f2e6;
   --deny: #c62828;
-  --deny-soft: #fff1f1;
+  --deny-soft: #f8e6e1;
   --radius: 10px;
-  --sans: "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --sans: "Space Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f0f11;
-    --surface: #17171a;
-    --text: #ececef;
-    --muted: #9a9aa3;
-    --line: #2a2a2f;
-    --accent: #8b90f0;
-    --accent-soft: #1e1f3a;
+    --bg: #0f1115;
+    --surface: #16191f;
+    --text: #f3f1ea;
+    --muted: #a3a5ab;
+    --line: #2a2d35;
+    --accent: #f3f1ea;
+    --accent-soft: #22252c;
+    --on-accent: #0f1115;
     --allow: #4ade80;
     --allow-soft: #0f2418;
     --deny: #f87171;
@@ -48,10 +54,12 @@ body {
 
 a {
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
 }
 a:hover {
-  text-decoration: underline;
+  text-decoration-color: currentColor;
 }
 
 code,
@@ -63,7 +71,7 @@ code,
 h1,
 h2 {
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
 }
 
 p {
@@ -101,7 +109,7 @@ p {
 .diamond {
   width: 10px;
   height: 10px;
-  background: var(--accent);
+  background: var(--signal);
   transform: rotate(45deg);
   border-radius: 2px;
 }
@@ -114,6 +122,7 @@ p {
 }
 .header nav a {
   color: var(--muted);
+  text-decoration: none;
 }
 .header nav a:hover {
   color: var(--text);
@@ -181,8 +190,7 @@ p {
   border-radius: 50%;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 13px;
-  font-weight: 600;
+  font: 600 12px var(--mono);
 }
 
 .footer {
@@ -202,6 +210,7 @@ p {
 }
 .footer a {
   color: var(--muted);
+  text-decoration: none;
 }
 
 /* Controls */
@@ -221,16 +230,16 @@ button:disabled {
   border-radius: 8px;
   padding: 7px 14px;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
 }
 .danger {
+  color: #fff;
   background: var(--deny);
 }
 @media (prefers-color-scheme: dark) {
-  .primary,
   .danger {
-    color: #0f0f11;
+    color: #0f1115;
   }
 }
 
