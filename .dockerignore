@@ -1,0 +1,13 @@
+# Keep secrets, keys and build output out of the image context.
+.env
+.env.*
+**/.env
+*.key
+.mandate/
+.mandate-demo/
+**/node_modules
+**/dist
+target
+.git
+AGENTS.md
+BUILD_SPEC.md
