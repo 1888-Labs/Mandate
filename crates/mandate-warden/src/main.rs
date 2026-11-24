@@ -213,6 +213,7 @@ async fn revoke(
 }
 
 #[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct CheckpointBody {
     #[serde(default)]
     comment: Option<String>,
