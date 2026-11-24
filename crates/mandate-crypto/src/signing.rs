@@ -70,3 +70,11 @@ pub fn sign_revocation(
     let signature = personal_sign(&revocation_digest(revocation), key)?;
     Ok(revocation.clone().into_revocation(signature.to_vec()))
 }
+
+/// Sign an arbitrary 32-byte digest with EIP-191 `personal_sign`.
+///
+/// Used by agents to prove which principal sent a request; pair it with
+/// [`crate::recover_signer`] on the receiving side.
+pub fn sign_message(message: &[u8; 32], key: &SigningKey) -> Result<[u8; SIGNATURE_LEN], SignatureError> {
+    personal_sign(message, key)
+}
