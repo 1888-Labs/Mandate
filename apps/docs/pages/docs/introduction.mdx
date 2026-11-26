@@ -1,0 +1,54 @@
+import { Flow } from '../../components/Flow'
+
+# What is Mandate? [A personal agent on a leash, on Fly.io Sprites]
+
+A personal AI agent is most useful when it can act: open issues, push branches, call its model, all without you watching. But a system prompt that says "never push to main" isn't a security boundary. Prompt injection, a planted instruction in an issue, or a plain bug talks right past it.
+
+Mandate moves the boundary out of the prompt. The agent can only act through a gateway that checks **signed, scoped, revocable authority** on every call.
+
+## How it works
+
+Two Fly.io Sprites:
+
+- **`mandate-agent`** runs the agent. It has no GitHub token, no model API key, and a network policy that only lets it reach the Warden. All it holds is its own signing key.
+- **`mandate-warden`** runs the Mandate Warden, the only Sprite allowed to use the Sprites connectors (GitHub and Ollama).
+
+<Flow />
+
+Every call, to *think* (Ollama) or to *act* (GitHub), is signed with the agent's key. The Warden:
+
+1. **Verifies** the signature, timestamp and that the request isn't a replay.
+2. **Classifies** the call into a mandate request: an action (`contents.write`, `model.chat`, …), a resource (`github:owner/repo`, `ollama:cloud`) and a target (a branch or a model).
+3. **Authorizes** it against the mandates the owner signed, and the revocations.
+4. **Logs** the decision to the live dashboard, then forwards allowed calls through the connector.
+
+| The agent tries | The Warden says | Why |
+|---|---|---|
+| Read the repo's issues | ✅ ALLOW | The owner granted `read` on the repo |
+| Write `README.md` on `agent/work` | ✅ ALLOW (checkpoint first) | `contents.write` is granted for `agent/work` only |
+| Write `README.md` on `main` | ❌ `RECIPIENT_NOT_ALLOWED` | `main` isn't an allowed branch |
+| Chat with a model it wasn't given | ❌ `RECIPIENT_NOT_ALLOWED` | `model.chat` is pinned to `gpt-oss:120b` |
+| Anything, after the owner revokes | ❌ `REVOKED` | Revocation applies on the next call |
+
+## Why on Sprites
+
+Sprites give this design its teeth:
+
+- **Connectors keep keys off the agent.** The GitHub and Ollama credentials live in Sprites connectors whose access policy only admits the Warden Sprite. Even a fully compromised agent has nothing to steal.
+- **Network policy gives the agent one way out.** The agent Sprite can reach the Warden and nothing else, so it can't go around it.
+- **Checkpoints make writes undoable.** The Warden snapshots the agent Sprite before every allowed write, and can roll it back after a denied one.
+
+The same Warden also [runs with Docker](/docs/self-hosting) anywhere else. There, the Warden holds the credentials itself; the agent still holds nothing.
+
+## What's inside
+
+| Crate | What it is |
+|---|---|
+| `mandate-core` | Mandates, delegation and the authorization engine |
+| `mandate-crypto` | EIP-191 signing and verification |
+| `mandate-warden` | The Warden gateway, the live dashboard, and two agent binaries: `warden-call` (one signed call) and `mandate-agent` (the agent) |
+| `mandate-cli` | Issue, delegate and check mandates from the terminal |
+
+:::info
+This version of Mandate was built for **Fly.io Hacksgiving** (November 23–29, 2026). The Warden, the agent, the Sprites integration, the dashboard and the Docker setup were built during the hackathon, on top of Mandate's open-source authorization engine (`mandate-core`, `mandate-crypto`), which predates the hackathon.
+:::

@@ -1,0 +1,53 @@
+# Deny codes [Every reason the Warden can say no]
+
+Every denied call gets a `403` and a JSON body with exactly one stable `reason` code, a human-readable `message`, and what the Warden understood the call to be. Codes never change meaning, so an agent can branch on them.
+
+```json
+{
+  "decision": "deny",
+  "reason": "RECIPIENT_NOT_ALLOWED",
+  "message": "Target main is not one of the allowed: agent/work.",
+  "action": "contents.write",
+  "resource": "github:dicethedev/mandate-demo",
+  "recipient": "main",
+  "mandateId": "0x0d9f…adb3",
+  "delegationPath": ["0x4f1b…5ae4", "0x818c…2a90"],
+  "note": null
+}
+```
+
+| Code | What happened | What to do |
+|---|---|---|
+| `NO_MANDATE` | No mandate grants this agent this action on this resource | Grant one, or check the agent's address |
+| `ACTION_NOT_ALLOWED` | The agent's mandate covers a different action | Grant a mandate for this action |
+| `RESOURCE_NOT_ALLOWED` | The agent's mandate covers a different repository or resource | Grant a mandate for this resource |
+| `RECIPIENT_NOT_ALLOWED` | The target isn't allowed: a branch outside `allowedRecipients`, or a model the agent wasn't given | Use an allowed branch or model |
+| `EXPIRED` | A mandate in the chain has expired | Grant a new one |
+| `REVOKED` | The agent's own mandate was revoked | Stop: the owner took authority back |
+| `ANCESTOR_REVOKED` | A mandate *above* the agent's was revoked | Stop: the whole branch was cut off |
+| `UNTRUSTED_ROOT` | The chain doesn't start with the Warden's owner | Someone tried to grant themselves authority |
+| `INVALID_DELEGATION` | A link in the chain escalates authority or is broken | Treat as an attack or a bug |
+| `INVALID_SIGNATURE` | A mandate has a bad signature | Treat as an attack |
+| `AMOUNT_EXCEEDED` | Over a mandate's numeric limit | Not used by the GitHub or Ollama classifiers today |
+
+`mandateId` is the mandate that came closest to authorizing the call, and `delegationPath` the chain behind it. `note` is set when the Warden did something extra, such as restoring the agent Sprite after a denied write.
+
+:::info
+A call the Warden can't classify (say, `PUT /repos/you/repo/collaborators/eve`) becomes an action like `other.put.collaborators`. No mandate grants those, so it's denied with `NO_MANDATE`. Unknown means no.
+:::
+
+## Not a decision
+
+These mean the Warden never got as far as checking a mandate. The call wasn't forwarded.
+
+| Status | Code | Meaning |
+|---|---|---|
+| `401` | `MISSING_AUTH` | A signing header is missing |
+| `401` | `BAD_TIMESTAMP` | The timestamp isn't a number |
+| `401` | `STALE_REQUEST` | More than 60 seconds of clock skew |
+| `401` | `BAD_SIGNATURE` | The signature doesn't parse or verify |
+| `401` | `SIGNER_MISMATCH` | The signature is valid but from a different key than `x-mandate-agent` |
+| `401` | `REPLAYED_REQUEST` | This exact signature was already used |
+| `413` | `BODY_TOO_LARGE` | The body is over 5 MiB |
+| `502` | `UPSTREAM_ERROR` | Allowed, but the connector call failed |
+| `503` | `NO_CONNECTOR` | No connector or credential is configured for that provider |

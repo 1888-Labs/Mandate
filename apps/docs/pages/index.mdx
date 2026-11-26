@@ -1,0 +1,136 @@
+---
+title: Mandate · A personal agent on a leash
+description: Run an AI agent on its own Fly.io Sprite with no keys and one way out. Every call it makes, to its model or to GitHub, is signed, checked against a revocable mandate, logged, and only then forwarded through a Sprites connector.
+layout: minimal
+content:
+  width: full
+outline: false
+showSidebar: false
+showAskAi: false
+---
+
+import { HomePage, Link } from 'vocs'
+import { BuiltBy } from '../components/BuiltBy'
+import { Flow } from '../components/Flow'
+
+<div className="mx-page">
+
+<div className="mx-hero">
+  <div>
+    <div className="mx-kicker">by 1888 Labs · on Fly.io Sprites</div>
+    <div className="mx-wordmark">Mandate</div>
+    <div className="mx-hero-tagline">The prompt is not the security boundary. Mandate is.</div>
+    <div className="mx-hero-copy">Your agent runs on its own Sprite with no GitHub token, no model key, and one way out: the Mandate Warden. Every call it makes, to think or to act, is signed, checked against a mandate you signed, logged, and only then forwarded through a Sprites connector. Revoke it and the next call stops.</div>
+    <div className="mx-hero-buttons">
+      <HomePage.Button href="/docs/quickstart" variant="accent">Get started</HomePage.Button>
+      <HomePage.Button href="https://mandate-warden-b4lwr.sprites.app/">Live dashboard</HomePage.Button>
+      <HomePage.Button href="https://github.com/1888-Labs/Mandate">GitHub</HomePage.Button>
+    </div>
+    <div className="mx-badges">
+      <div className="mx-badge"><span>runs on</span><span>Fly.io Sprites</span></div>
+      <div className="mx-badge"><span>engine</span><span>Rust</span></div>
+      <div className="mx-badge"><span>license</span><span>MIT</span></div>
+    </div>
+  </div>
+  <div className="mx-install">
+
+:::code-group
+
+```bash [Give the agent a task]
+# On the agent Sprite. It holds only its signing key.
+mandate-agent 'Add a line to README.md directly on main.'
+
+✓ allow  GET repos/dicethedev/mandate-demo/contents/README.md  (HTTP 200)
+✗ DENY   PUT repos/dicethedev/mandate-demo/contents/README.md  (HTTP 403)
+         Target main is not one of the allowed: agent/work.
+```
+
+```json [The Warden explains]
+{
+  "decision": "deny",
+  "reason": "RECIPIENT_NOT_ALLOWED",
+  "message": "Target main is not one of the allowed: agent/work.",
+  "action": "contents.write",
+  "resource": "github:dicethedev/mandate-demo",
+  "recipient": "main",
+  "delegationPath": ["0x4f1b…5ae4", "0x818c…2a90"]
+}
+```
+
+```bash [Pin its model]
+# The owner lets the agent think with one model only.
+curl -X POST "$WARDEN/v1/admin/mandates" \
+  -H "authorization: Bearer $WARDEN_ADMIN_TOKEN" \
+  -H 'content-type: application/json' -d '{
+    "subject": "0xAGENT",
+    "action": "model.chat",
+    "resource": "ollama:cloud",
+    "allowedRecipients": ["gpt-oss:120b"]
+  }'
+```
+
+```bash [Self-host]
+# The same Warden anywhere, with Docker.
+docker compose up -d warden     # dashboard on http://localhost:8080
+docker compose run --rm agent mandate-agent "List the open issues"
+```
+
+:::
+
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-grid">
+    <div className="mx-card"><div className="mx-card-title">No keys on the agent</div><div className="mx-card-copy">The agent Sprite holds no GitHub token and no model key. The Sprites connectors are locked to the Warden, and the agent's network policy only reaches the Warden. <Link to="/docs/architecture">Architecture</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Every call signed</div><div className="mx-card-copy">The agent signs each request with its own key. The Warden decides on the recovered signer, never on what the agent claims. <Link to="/docs/warden#signing-a-request">Signing</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Thinking is gated too</div><div className="mx-card-copy">Model calls go through the Warden like GitHub calls, checked against a <code>model.chat</code> mandate that pins which models the agent may use. <Link to="/docs/warden#how-calls-are-classified">Classification</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Undo with checkpoints</div><div className="mx-card-copy">The Warden checkpoints the agent Sprite before every allowed write and can restore it after a denied one. <Link to="/docs/concepts#checkpoints">Checkpoints</Link></div></div>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">How it works</div>
+  <div className="mx-section-title">Sign, classify, authorize, log</div>
+  <Flow />
+  <div className="mx-grid">
+    <div className="mx-card"><div className="mx-card-title">1 · Sign</div><div className="mx-card-copy">The agent signs <code>PUT …/contents/README.md</code> with its key and sends it to the Warden, the only place it can reach.</div></div>
+    <div className="mx-card"><div className="mx-card-title">2 · Classify</div><div className="mx-card-copy">The Warden turns the call into a mandate request: <code>contents.write</code> on <code>github:owner/repo</code>, target branch <code>main</code>.</div></div>
+    <div className="mx-card"><div className="mx-card-title">3 · Authorize</div><div className="mx-card-copy">It checks the owner-signed mandates and revocations. The agent may only write to <code>agent/work</code>: DENY, <code>RECIPIENT_NOT_ALLOWED</code>.</div></div>
+    <div className="mx-card"><div className="mx-card-title">4 · Log and forward</div><div className="mx-card-copy">Every decision goes on the live dashboard. Allowed calls go through the Sprites connector; denied ones never leave the Warden.</div></div>
+  </div>
+  <div className="mx-hero-buttons">
+    <HomePage.Button href="/docs/warden">The Warden</HomePage.Button>
+    <HomePage.Button href="/docs/connect-an-agent">Connect your own agent</HomePage.Button>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">The owner stays in charge</div>
+  <div className="mx-section-title">Narrow authority you can take back</div>
+  <div className="mx-grid" data-cols="3">
+    <div className="mx-card"><div className="mx-card-title">Scoped mandates</div><div className="mx-card-copy">An action, a resource, the allowed targets (branches or models) and a lifetime, signed by the owner's key. <Link to="/docs/concepts">Concepts</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Revoke live</div><div className="mx-card-copy">One click on the dashboard and the agent's next call is denied with <code>REVOKED</code>. <Link to="/docs/deny-codes">Deny codes</Link></div></div>
+    <div className="mx-card"><div className="mx-card-title">Denied by default</div><div className="mx-card-copy">A call the Warden can't classify becomes an action no mandate grants. Nothing unknown gets through. <Link to="/docs/security">Security</Link></div></div>
+  </div>
+</div>
+
+<div className="mx-section">
+  <div className="mx-eyebrow">Run it your way</div>
+  <div className="mx-section-title">On Sprites, or anywhere with Docker</div>
+  <div className="mx-grid">
+    <Link className="mx-card mx-link" to="/docs/quickstart"><div className="mx-card-title">Quick start</div><div className="mx-card-copy">Two Sprites, two connectors, one mandate, and a first task for the agent.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/self-hosting"><div className="mx-card-title">Docker</div><div className="mx-card-copy">The Warden and agent from <code>ghcr.io/1888-labs/mandate</code>, with local or cloud Ollama.</div></Link>
+    <Link className="mx-card mx-link" to="/docs/warden"><div className="mx-card-title">Warden reference</div><div className="mx-card-copy">Every route, header, action and environment variable.</div></Link>
+    <Link className="mx-card mx-link" to="https://mandate-warden-b4lwr.sprites.app/"><div className="mx-card-title">Live dashboard</div><div className="mx-card-copy">Watch the real agent's calls get allowed and denied.</div></Link>
+  </div>
+</div>
+
+<BuiltBy />
+
+<div className="mx-footer">
+  <span>MIT licensed · Built for Fly.io Hacksgiving 2026</span>
+  <span><Link to="/docs/introduction">Docs</Link> · <a href="https://mandate-warden-b4lwr.sprites.app/">Dashboard</a> · <a href="https://github.com/1888-Labs/Mandate">GitHub</a></span>
+</div>
+
+</div>

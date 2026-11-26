@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths-ignore: ["**.md", "docs/**"]
+    paths-ignore: ["**.md", "docs/**", "apps/docs/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:

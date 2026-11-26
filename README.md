@@ -16,7 +16,7 @@
 <br/>
 
 > [!NOTE]
-> `main` is being rebuilt for the Fly.io **Hacksgiving** hackathon (Nov 23–29, 2026). The previous Arkiv version lives on the [`arkiv`](https://github.com/1888-Labs/Mandate/tree/arkiv) branch.
+> Built for the Fly.io **Hacksgiving** hackathon (Nov 23–29, 2026). The Warden, the agent, the Sprites integration, the dashboard and the Docker setup were built during the hackathon, on top of Mandate's authorization engine (`mandate-core`, `mandate-crypto`), which predates it.
 
 **The prompt is not the security boundary. Mandate is.**
 
@@ -71,6 +71,8 @@ The image is `ghcr.io/1888-labs/mandate`. See [self-hosting](docs/self-hosting.m
 | [`mandate-cli`](crates/mandate-cli) | Issue, delegate and check mandates from the terminal |
 
 ## Docs
+
+Read them at **[1888-labs.github.io/Mandate](https://1888-labs.github.io/Mandate/)**, or here:
 
 - [Architecture](docs/architecture.md): two Sprites, and how each call is decided
 - [The Warden](docs/warden.md): HTTP API, request signing, classification, configuration, and setting up two Sprites

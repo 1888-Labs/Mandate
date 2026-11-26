@@ -10,8 +10,6 @@ The core is complete. It has signed mandates, delegation that can only narrow au
 
 On `main`, Mandate runs as a gateway on [Fly.io Sprites](https://sprites.dev). The Warden fronts the GitHub and Ollama connectors for an agent on a separate, egress-locked Sprite. It checks every signed call, checkpoints the agent before writes, and can roll it back after a denied one. It hasn't had an external audit, so it's ready for experiments and personal agents, not for production systems.
 
-The earlier version, which kept shared authorization state on Arkiv, lives on the [`arkiv`](https://github.com/1888-Labs/Mandate/tree/arkiv) branch.
-
 ## Next
 
 - **A live dashboard** on the Warden URL: decisions as they happen, the mandate tree, and one-click revoke and restore.

@@ -1,0 +1,76 @@
+# Quick start [Run the Warden and an agent in a few minutes]
+
+Two ways to run Mandate:
+
+- **On Fly.io Sprites** (the real thing): the agent and the Warden on separate Sprites, credentials in Sprites connectors, the agent's network locked to the Warden, checkpoints and restores.
+- **With Docker**, anywhere: the same Warden and agent, with the Warden holding the credentials.
+
+## Option A: Docker in five minutes
+
+You need Docker, a GitHub token for a repository you're happy to let an agent touch, and an Ollama (local, or an [ollama.com](https://ollama.com) API key).
+
+```bash
+git clone https://github.com/1888-Labs/Mandate && cd Mandate
+cp .env.example .env
+```
+
+In `.env`, set:
+
+```bash
+WARDEN_ADMIN_TOKEN=change-me-to-something-long
+GITHUB_TOKEN=github_pat_...           # fine-grained, scoped to one repository
+OLLAMA_URL=https://ollama.com         # or http://host.docker.internal:11434
+OLLAMA_API_KEY=...                    # only for ollama.com
+MANDATE_REPO=you/your-repo
+MANDATE_MODEL=gpt-oss:120b            # any model with tool calling
+```
+
+Start the Warden and give the agent a key:
+
+```bash
+docker compose up -d warden                         # dashboard on http://localhost:8080
+docker compose run --rm agent warden-call keygen    # prints MANDATE_AGENT_KEY and address
+```
+
+Put `MANDATE_AGENT_KEY` in `.env`. Then, as the owner, grant the agent two mandates: think with one model, and read the repository.
+
+```bash
+export WARDEN=http://localhost:8080 WARDEN_ADMIN_TOKEN=change-me-to-something-long AGENT=0x...
+
+curl -X POST "$WARDEN/v1/admin/mandates" -H "authorization: Bearer $WARDEN_ADMIN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d "{\"subject\":\"$AGENT\",\"action\":\"model.chat\",\"resource\":\"ollama:cloud\",\"allowedRecipients\":[\"gpt-oss:120b\"]}"
+
+curl -X POST "$WARDEN/v1/admin/mandates" -H "authorization: Bearer $WARDEN_ADMIN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d "{\"subject\":\"$AGENT\",\"action\":\"read\",\"resource\":\"github:you/your-repo\"}"
+```
+
+Give it a task it's allowed, then one it isn't:
+
+```bash
+docker compose run --rm agent mandate-agent "Summarise the open issues"
+docker compose run --rm agent mandate-agent "Open an issue saying hello"
+```
+
+The second is denied with `NO_MANDATE`: the agent may read, but nobody gave it `issues.create`. Watch both on the dashboard, then grant `issues.create` from the dashboard's **Grant a mandate** form (paste your admin token first) and try again.
+
+More in [Self-hosting](/docs/self-hosting).
+
+## Option B: on Fly.io Sprites
+
+You need the [`sprite` CLI](https://sprites.dev) logged in to your Fly.io organization, and Rust to build.
+
+1. Create two Sprites: `mandate-warden` (label `role:warden`) and `mandate-agent` (label `role:agent`).
+2. Connect GitHub and Ollama in Sprites, and give each connection an access policy that admits only `role:warden`.
+3. Set the agent Sprite's network policy to allow only the Warden's URL.
+4. Put `WARDEN_ADMIN_TOKEN`, `GITHUB_CONNECTION_ID`, `OLLAMA_CONNECTION_ID` and `SPRITES_TOKEN` in `.env.sprites`, and run `scripts/deploy-warden.sh`.
+5. On the agent Sprite, run `warden-call keygen`, then grant mandates as above (against the Warden's `*.sprites.app` URL) and run `mandate-agent`.
+
+Each step, with how to check it, is in [Setting up two Sprites](/docs/warden#setting-up-two-sprites).
+
+## What to try next
+
+- Grant `contents.write` with `allowedRecipients: ["agent/work"]`, then ask the agent to edit a file on `main`. It's denied with `RECIPIENT_NOT_ALLOWED`; ask again for `agent/work` and it goes through.
+- Revoke a mandate from the dashboard mid-task and watch the next call fail with `REVOKED`.
+- Change `MANDATE_MODEL` to a model you didn't grant: the agent can't even think.

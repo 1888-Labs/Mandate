@@ -1,0 +1,87 @@
+# Connect your own agent [Sign calls to the Warden from any language]
+
+`mandate-agent` is one agent. Any agent can use the Warden, in any language, as long as it can sign a request with an Ethereum (secp256k1) key. The agent never needs a GitHub token or model key: it calls the Warden with the same paths it would send to GitHub or Ollama.
+
+| To reach | Call the Warden at |
+|---|---|
+| `https://api.github.com/<path>` | `$WARDEN/v1/gateway/github/<path>` |
+| Ollama `/<path>` | `$WARDEN/v1/gateway/ollama/<path>` |
+
+## 1. Give the agent a key
+
+```bash
+warden-call keygen
+# MANDATE_AGENT_KEY=4c0883a6…
+# address=0x818c71be4057eb5927ff4d2da66bdfbb82f52a90
+```
+
+The address is what the owner grants mandates to. Keep the key on the agent's machine only.
+
+## 2. Sign each request
+
+Three headers:
+
+| Header | Value |
+|---|---|
+| `x-mandate-agent` | the agent's address |
+| `x-mandate-timestamp` | Unix seconds, within 60 seconds of the Warden's clock |
+| `x-mandate-signature` | `0x` + the 65-byte EIP-191 `personal_sign` signature of the digest below |
+
+```text
+digest = keccak256(
+  "mandate-call/1\n" + METHOD + "\n" + path_and_query + "\n" + timestamp + "\n" + "0x" + hex(keccak256(body))
+)
+```
+
+`path_and_query` is the full Warden path, starting with `/v1/gateway/`. An empty body hashes as `keccak256("")`. Each signature works once.
+
+:::code-group
+
+```ts [TypeScript (viem)]
+import { keccak256, toHex, concat, toBytes } from "viem"
+import { privateKeyToAccount } from "viem/accounts"
+
+const account = privateKeyToAccount(`0x${process.env.MANDATE_AGENT_KEY}`)
+
+export async function wardenCall(method: string, path: string, body?: unknown) {
+  const pathAndQuery = `/v1/gateway/${path}`
+  const raw = body === undefined ? "" : JSON.stringify(body)
+  const ts = Math.floor(Date.now() / 1000).toString()
+  const digest = keccak256(toBytes(
+    `mandate-call/1\n${method}\n${pathAndQuery}\n${ts}\n${keccak256(toBytes(raw))}`
+  ))
+  const signature = await account.signMessage({ message: { raw: digest } })
+  const res = await fetch(process.env.MANDATE_WARDEN_URL + pathAndQuery, {
+    method,
+    headers: {
+      "x-mandate-agent": account.address,
+      "x-mandate-timestamp": ts,
+      "x-mandate-signature": signature,
+      ...(raw && { "content-type": "application/json" }),
+    },
+    body: raw || undefined,
+  })
+  return { decision: res.headers.get("x-mandate-decision"), status: res.status, body: await res.json() }
+}
+
+await wardenCall("GET", "github/repos/you/your-repo/issues")
+```
+
+```bash [Shell (warden-call)]
+export MANDATE_AGENT_KEY=… MANDATE_WARDEN_URL=https://your-warden.sprites.app
+warden-call GET repos/you/your-repo/issues
+warden-call --ollama POST api/chat '{"model":"gpt-oss:120b","stream":false,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+:::
+
+## 3. Handle the answer
+
+Every response carries `x-mandate-decision: allow` or `deny`.
+
+- **allow**: the body is the provider's own response (GitHub JSON, Ollama JSON), with the provider's status code.
+- **deny**: `403` with a [reason code](/docs/deny-codes) and a message. Feed it back to your model as the tool result. A good agent explains the denial instead of trying to get around it, and `mandate-agent`'s system prompt asks for exactly that.
+
+## Tool-calling agents
+
+`mandate-agent` gives the model one tool, `github_request(method, path, body)`, and runs each tool call through the Warden. A denial goes back to the model as the tool result, so the model sees the reason. The model call itself also goes through the Warden, checked against the agent's `model.chat` mandate. See `crates/mandate-warden/src/bin/mandate-agent.rs` for a complete agent in about 250 lines.
