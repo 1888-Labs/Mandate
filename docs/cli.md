@@ -97,4 +97,4 @@ Other commands: `mandate inspect M2`, `mandate principal list` and `mandate reso
 > [!WARNING]
 > `.mandate/keys.json` holds **plaintext development private keys** (written owner-only). It's for local demos only and is git-ignored. Never use these keys for anything real.
 
-To publish what the CLI signs to Arkiv, use `mandate export M1` (prints the exact signed document) with the [HTTP API](api.md), or run [`scripts/demo-arkiv.sh`](../scripts/demo-arkiv.sh), which does the whole flow.
+`mandate export M1` prints the exact signed document. A Warden accepts signed mandates at `POST /v1/mandates` as `{"mandate": <document>}`, but they only grant something there if their chain leads back to the Warden's owner key. See [the Warden](warden.md).

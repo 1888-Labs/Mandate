@@ -90,7 +90,7 @@ Every check returns **ALLOW** with evidence (`mandateId`, `rootPrincipal`, `dele
 | `INVALID_SIGNATURE` | A mandate in the chain has a bad signature or a forged ID |
 | `INVALID_DELEGATION` | A link escalates authority, a parent is missing, or the chain is longer than 16 hops |
 | `UNTRUSTED_ROOT` | The chain doesn't start with a trusted owner of the resource |
-| `EXPIRED` | A mandate in the chain has expired (the server's clock decides) |
+| `EXPIRED` | A mandate in the chain has expired (the Warden's clock decides) |
 | `REVOKED` | The agent's own mandate was revoked |
 | `ANCESTOR_REVOKED` | A mandate above the agent's was revoked; names the highest one |
 | `AMOUNT_EXCEEDED` | Over the effective limit, or no amount given where a limit applies |

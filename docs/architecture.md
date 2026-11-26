@@ -3,58 +3,66 @@
 [← Back to the README](../README.md)
 
 ```mermaid
-flowchart TD
-    issuers["<b>Issuers</b><br/>Alice, FinanceAgent<br/>sign mandates and revocations"]
-    agent["<b>AI agent</b><br/>e.g. InvoiceAgent"]
-    tool["<b>Protected tool</b><br/>e.g. payments"]
-    server["<b>mandate-server</b> (Rust)<br/>all authorization logic"]
-    engine["<b>Authorization engine</b><br/>signatures · delegation chain · trust anchors<br/>expiry · revocations · limits"]
-    adapter["<b>arkiv-adapter</b> (TypeScript)<br/>publishes from issuer wallets<br/>filters by $creator"]
-    arkiv[("<b>Arkiv</b> · Tiramisu testnet<br/>mandate and revocation entities")]
+flowchart LR
+    subgraph agentSprite["Agent Sprite · role:agent · egress: Warden only"]
+        agent["<b>mandate-agent</b><br/>agent key, no tokens"]
+    end
+    subgraph wardenSprite["Warden Sprite · role:warden"]
+        warden["<b>mandate-warden</b><br/>verify · classify · authorize"]
+        state[("owner key · mandates<br/>revocations · decision log")]
+    end
+    github["Sprites connector<br/><b>GitHub</b>"]
+    ollama["Sprites connector<br/><b>Ollama</b>"]
+    api["Sprites API<br/>checkpoint · restore"]
 
-    issuers -->|"signed documents"| server
-    agent -->|"transfer $200 → AWS"| tool
-    tool -->|"POST /v1/authorize"| server
-    server -->|"snapshot of the relevant records"| engine
-    engine -->|"ALLOW / DENY + reason"| tool
-    server <-->|"read · publish"| adapter
-    adapter <-->|"SDK queries · transactions"| arkiv
+    agent -->|"signed call"| warden
+    warden --- state
+    warden -->|"allowed calls"| github
+    warden -->|"allowed model calls"| ollama
+    warden -->|"before writes · after denied writes"| api
+    api -.->|"snapshot / roll back"| agentSprite
 ```
 
-Rust owns what authorization *means*. TypeScript only moves records to and from Arkiv, because the official Arkiv SDK is TypeScript.
+The agent and its gatekeeper run on two separate [Fly.io Sprites](https://sprites.dev):
 
+- The **agent Sprite** holds one secret: the agent's own signing key. Its network policy only lets it reach the Warden's URL, so it can't call GitHub, a model, or anything else directly.
+- The **Warden Sprite** is the only Sprite allowed to use the connectors, enforced by the connectors' access policy. The connectors attach the real GitHub and Ollama credentials, so even the Warden never sees a token.
 
+The agent's whole world, both what it can *think with* and what it can *do*, goes through one place that checks signed, revocable mandates.
 
-## How a decision is made
+## How a call is decided
 
 ```mermaid
 sequenceDiagram
-    participant T as Payment tool
-    participant S as mandate-server
-    participant A as arkiv-adapter
-    participant K as Arkiv
-    T->>S: POST /v1/authorize<br/>InvoiceAgent: transfer $200 → AWS
-    S->>A: InvoiceAgent's mandates for this action and resource
-    A->>K: query subject + action + resource
-    K-->>A: M2, created by FinanceAgent
-    A-->>S: M2
-    S->>A: every copy of M2's parent, M1
-    A->>K: query mandate_id = M1
-    K-->>A: M1, created by Alice
-    A-->>S: M1
-    S->>A: revocations of M1 and M2, by their issuers only
-    A->>K: query (mandate_id, $creator) pairs
-    K-->>A: none
-    A-->>S: none
-    S->>S: verify signatures, chain, trust anchor,<br/>expiry, revocations and limits
-    S-->>T: ALLOW, via Alice → FinanceAgent → InvoiceAgent
+    participant A as mandate-agent
+    participant W as Warden
+    participant S as Sprites API
+    participant C as GitHub connector
+    A->>W: PUT /v1/gateway/github/repos/o/r/contents/README.md<br/>x-mandate-agent · timestamp · signature
+    W->>W: recover signer, reject stale or replayed requests
+    W->>W: classify → contents.write on github:o/r, recipient = branch
+    W->>W: mandate-core: chain, signatures, trust anchor,<br/>expiry, revocations, limits
+    alt allowed
+        W->>S: checkpoint agent Sprite ("before contents.write on github:o/r")
+        W->>C: forward the call
+        C-->>W: GitHub response
+        W-->>A: response + x-mandate-decision: allow
+    else denied
+        W-->>A: 403 { reason, message, delegationPath }
+        W->>S: restore agent to known-good checkpoint (if enabled)
+    end
 ```
 
-For each request, `mandate-server` fetches from Arkiv the agent's candidate mandates, every copy of each ancestor (one batched query per chain level), and the revocations of all of them published by their issuers (one batched query). It loads them into an in-memory snapshot and runs the same synchronous engine the CLI and tests use. For the demo chain that's three Arkiv queries and about 0.65 s per decision.
+1. **Who is asking.** The agent signs each request (EIP-191) over its method, path, timestamp and body hash. The Warden uses the recovered signer as the subject, so an agent can't claim to be someone else. See [Signing a request](warden.md#signing-a-request).
+2. **What it's asking for.** The call is classified into an `action`, a `resource` and an optional `recipient`. For GitHub, the recipient is the branch a write lands on. For Ollama, it's the model. Calls it doesn't recognise get an action that no mandate grants. See [How calls are classified](warden.md#how-calls-are-classified).
+3. **Is it allowed.** `mandate-core` runs the same engine the CLI and tests use. The Warden's owner key is the only trusted root.
+4. **Undo.** Before an allowed write, the Warden can checkpoint the agent Sprite. After a denied write, it can roll the agent back to its last known-good checkpoint. A denial means the agent tried something it shouldn't have, so its local state is no longer trusted.
 
-- **Fail closed.** If Arkiv can't be read, the answer is `503 STATE_UNAVAILABLE`, never a decision. Anything missing from a snapshot is a denial.
-- **No keys on the server.** Clients sign documents themselves; the server verifies them before publishing.
-- **Two independent checks on every record:** its on-chain `$creator` must be its issuer, and its signature must verify. See [`arkiv/schema.md`](../arkiv/schema.md).
+Every decision, allowed or denied, is appended to `decisions.jsonl` and served at `GET /v1/state`.
+
+## The agent
+
+`mandate-agent` is a short tool-calling loop. It sends the conversation to `api/chat` through the Warden, with one tool, `github_request`. It then runs each tool call through the Warden and feeds the result back, including any denial and its reason. It stops when the model answers without a tool call, or after `MANDATE_MAX_STEPS` steps. The system prompt tells it not to work around denials, but that isn't the security boundary. The Warden is.
 
 ## Repository layout
 
@@ -63,18 +71,10 @@ mandate/
 ├── crates/
 │   ├── mandate-core/     protocol types, IDs, delegation, revocation, authorization engine (no crypto, no I/O)
 │   ├── mandate-crypto/   secp256k1 keys, EIP-191 signing and verification of mandates and revocations
-│   ├── mandate-cli/      the `mandate` command
-│   └── mandate-server/   HTTP API; decides each request from a fresh Arkiv snapshot
-├── apps/
-│   ├── arkiv-adapter/    TypeScript bridge to Arkiv (stores and queries signed documents, live events)
-│   ├── web/              the web UI (React + TypeScript + Vite), served by mandate-server
-│   └── docs/             the documentation site (Vocs), built from docs/ and arkiv/
-├── arkiv/
-│   ├── schema.md         entities, attributes, queries, what stays off Arkiv
-│   └── friction.md       real Arkiv development friction
-├── examples/
-│   └── finance-agent/    a prompt-injected agent whose payments Mandate stops
+│   ├── mandate-cli/      the `mandate` command, for local mandates and checks
+│   └── mandate-warden/   the Warden gateway, plus two agent-side binaries:
+│       └── src/bin/      warden-call (one signed call) and mandate-agent (the agent)
+├── docs/                 these docs
 └── scripts/
-    └── demo-arkiv.sh     the full demo against Arkiv Tiramisu
+    └── deploy-warden.sh  build and deploy to the two Sprites
 ```
-

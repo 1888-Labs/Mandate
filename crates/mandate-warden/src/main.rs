@@ -152,14 +152,9 @@ async fn main() {
     axum::serve(listener, router).await.expect("serve");
 }
 
-async fn home(State(app): State<Shared>) -> Html<String> {
-    let owner = app.state.lock().await.owner();
-    Html(format!(
-        "<!doctype html><meta charset=utf-8><title>Mandate Warden</title>\
-         <body style=\"font:16px system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem\">\
-         <h1>Mandate Warden</h1><p>Every outbound call from the agent is checked here first.</p>\
-         <p>Owner: <code>{owner}</code></p><p><a href=\"/v1/state\">Live state (JSON)</a></p>"
-    ))
+/// The live dashboard: a single self-contained page that polls `/v1/state`.
+async fn home() -> Html<&'static str> {
+    Html(include_str!("dashboard.html"))
 }
 
 async fn snapshot(State(app): State<Shared>) -> Json<Value> {

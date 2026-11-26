@@ -13,7 +13,7 @@ Zanzibar stores and evaluates access-control lists for hundreds of Google servic
 
 What Mandate takes from Zanzibar:
 
-- **One shared source of authorization truth.** Every service asks the same system "is this allowed?" instead of keeping its own permissions. In Mandate that shared state lives on Arkiv.
+- **One shared source of authorization truth.** Every service asks the same system "is this allowed?" instead of keeping its own permissions. In Mandate that place is the Warden: every outbound call an agent makes is checked there.
 - **A generic model.** Zanzibar isn't specific to any one product. Mandate's `action` and `resource` are plain strings for the same reason: payments, GitHub, databases and MCP tools all fit the same model.
 - **Answering "who can do what, and why".** Decisions are queries over shared state, and Mandate makes the reasoning explicit in every ALLOW and DENY.
 
@@ -21,7 +21,7 @@ Where Mandate differs:
 
 - **Delegated capabilities, not access-control lists.** Zanzibar stores relations ("user U is an editor of document D"). Mandate stores signed grants that can be narrowed and passed down a chain of agents.
 - **No trusted operator.** Zanzibar is run by Google and trusted by the services that call it. Mandate's records are signed by their issuers and re-verified by the engine, so the storage layer can't invent or alter authority.
-- **Weaker consistency.** Zanzibar gives strong consistency guarantees, including protection against the "new enemy" problem, where a check uses stale permissions after a revocation. Mandate v0.1 checks against the latest state it reads from Arkiv and makes no such guarantee. Mandate is *inspired by* Zanzibar; it is not a Zanzibar implementation.
+- **Weaker consistency.** Zanzibar gives strong consistency guarantees, including protection against the "new enemy" problem, where a check uses stale permissions after a revocation. Mandate checks each call against the Warden's current state. A revocation applies from the next call, but there's no ordering guarantee across multiple Wardens. Mandate is *inspired by* Zanzibar; it is not a Zanzibar implementation.
 
 ## Distributed Authorization with Distributed Grammars
 
