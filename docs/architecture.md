@@ -23,7 +23,7 @@ flowchart LR
     api -.->|"snapshot / roll back"| agentSprite
 ```
 
-The agent and its gatekeeper run on two separate [Fly.io Sprites](https://sprites.dev):
+The agent and its gatekeeper run on two separate [Fly.io Sprites](https://fly.io/sprites):
 
 - The **agent Sprite** holds one secret: the agent's own signing key. Its network policy only lets it reach the Warden's URL, so it can't call GitHub, a model, or anything else directly.
 - The **Warden Sprite** is the only Sprite allowed to use the connectors, enforced by the connectors' access policy. The connectors attach the real GitHub and Ollama credentials, so even the Warden never sees a token.

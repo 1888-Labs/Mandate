@@ -8,7 +8,7 @@ Mandate moves the boundary out of the prompt. The agent can only act through a g
 
 ## How it works
 
-Two Fly.io Sprites:
+Two [Fly.io Sprites](https://fly.io/sprites):
 
 - **`mandate-agent`** runs the agent. It has no GitHub token, no model API key, and a network policy that only lets it reach the Warden. All it holds is its own signing key.
 - **`mandate-warden`** runs the Mandate Warden, the only Sprite allowed to use the Sprites connectors (GitHub and Ollama).

@@ -1,6 +1,6 @@
 # Self-hosting with Docker
 
-On Fly.io Sprites the Warden forwards through Sprites connectors and never holds a credential. Anywhere else (a laptop, a VM, a cluster) there are no connectors, so the Warden holds the GitHub token and Ollama key itself. The agent is the same in both cases: it holds only its signing key and can only reach the Warden.
+On [Fly.io Sprites](https://fly.io/sprites) the Warden forwards through Sprites connectors and never holds a credential. Anywhere else (a laptop, a VM, a cluster) there are no connectors, so the Warden holds the GitHub token and Ollama key itself. The agent is the same in both cases: it holds only its signing key and can only reach the Warden.
 
 | | On Sprites | In Docker |
 |---|---|---|

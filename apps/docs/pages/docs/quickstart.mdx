@@ -2,7 +2,7 @@
 
 Two ways to run Mandate:
 
-- **On Fly.io Sprites** (the real thing): the agent and the Warden on separate Sprites, credentials in Sprites connectors, the agent's network locked to the Warden, checkpoints and restores.
+- **On [Fly.io Sprites](https://fly.io/sprites)** (the real thing): the agent and the Warden on separate Sprites, credentials in Sprites connectors, the agent's network locked to the Warden, checkpoints and restores.
 - **With Docker**, anywhere: the same Warden and agent, with the Warden holding the credentials.
 
 ## Option A: Docker in five minutes
@@ -59,7 +59,7 @@ More in [Self-hosting](/docs/self-hosting).
 
 ## Option B: on Fly.io Sprites
 
-You need the [`sprite` CLI](https://sprites.dev) logged in to your Fly.io organization, and Rust to build.
+You need the [`sprite` CLI](https://fly.io/sprites) logged in to your Fly.io organization, and Rust to build.
 
 1. Create two Sprites: `mandate-warden` (label `role:warden`) and `mandate-agent` (label `role:agent`).
 2. Connect GitHub and Ollama in Sprites, and give each connection an access policy that admits only `role:warden`.

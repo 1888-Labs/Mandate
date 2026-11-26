@@ -2,7 +2,7 @@
 
 [← Back to the README](../README.md)
 
-The Mandate Warden is an HTTP gateway that sits between an agent and the Fly.io Sprites connectors. It runs on its own Sprite, the only one allowed to use the connectors. The agent runs on a second Sprite whose network is locked so it can only reach the Warden.
+The Mandate Warden is an HTTP gateway that sits between an agent and the [Fly.io Sprites](https://fly.io/sprites) connectors. It runs on its own Sprite, the only one allowed to use the connectors. The agent runs on a second Sprite whose network is locked so it can only reach the Warden.
 
 For each call, the Warden:
 
@@ -148,7 +148,7 @@ The agent side reads `MANDATE_AGENT_KEY` and `MANDATE_WARDEN_URL`. `mandate-agen
 
 ## Setting up two Sprites
 
-You need the [`sprite` CLI](https://sprites.dev), logged in to your Fly.io organization.
+You need the [`sprite` CLI](https://fly.io/sprites), logged in to your Fly.io organization.
 
 1. **Create two Sprites**: `mandate-warden` labelled `role:warden`, and `mandate-agent` labelled `role:agent`.
 2. **Add connectors.** In Sprites, connect GitHub (with access to the repository the agent works on) and Ollama. Note each connection ID.

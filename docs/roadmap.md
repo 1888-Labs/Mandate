@@ -8,7 +8,7 @@ Where Mandate is going. These are plans, not promises: priorities shift with wha
 
 The core is complete. It has signed mandates, delegation that can only narrow authority, revocation that cascades to everything beneath it, and explained ALLOW or DENY decisions. You can use it through a Rust library and a CLI.
 
-On `main`, Mandate runs as a gateway on [Fly.io Sprites](https://sprites.dev). The Warden fronts the GitHub and Ollama connectors for an agent on a separate, egress-locked Sprite. It checks every signed call, checkpoints the agent before writes, and can roll it back after a denied one. It hasn't had an external audit, so it's ready for experiments and personal agents, not for production systems.
+On `main`, Mandate runs as a gateway on [Fly.io Sprites](https://fly.io/sprites). The Warden fronts the GitHub and Ollama connectors for an agent on a separate, egress-locked Sprite. It checks every signed call, checkpoints the agent before writes, and can roll it back after a denied one. It hasn't had an external audit, so it's ready for experiments and personal agents, not for production systems.
 
 ## Next
 
