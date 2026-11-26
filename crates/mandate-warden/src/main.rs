@@ -7,6 +7,7 @@
 
 mod auth;
 mod github;
+mod ollama;
 mod sprites;
 mod state;
 
@@ -30,10 +31,46 @@ use crate::auth::ReplayGuard;
 use crate::sprites::Sprites;
 use crate::state::{DecisionRecord, GrantRequest, WardenState};
 
-const GITHUB_PREFIX: &str = "/v1/gateway/github/";
+/// A connector the Warden fronts.
+#[derive(Clone, Copy)]
+enum Provider {
+    Github,
+    Ollama,
+}
+
+impl Provider {
+    fn name(self) -> &'static str {
+        match self {
+            Provider::Github => "github",
+            Provider::Ollama => "ollama",
+        }
+    }
+
+    fn prefix(self) -> &'static str {
+        match self {
+            Provider::Github => "/v1/gateway/github/",
+            Provider::Ollama => "/v1/gateway/ollama/",
+        }
+    }
+
+    fn classify(self, method: &str, path: &str, body: &Value) -> github::Operation {
+        match self {
+            Provider::Github => github::classify(method, path, body),
+            Provider::Ollama => ollama::classify(method, path, body),
+        }
+    }
+
+    fn connection(self, config: &Config) -> Option<String> {
+        match self {
+            Provider::Github => config.github_connection.clone(),
+            Provider::Ollama => config.ollama_connection.clone(),
+        }
+    }
+}
 
 struct Config {
     github_connection: Option<String>,
+    ollama_connection: Option<String>,
     admin_token: Option<String>,
     agent_sprite: String,
     checkpoint_on_write: bool,
@@ -74,6 +111,7 @@ async fn main() {
     let state = WardenState::open(data).expect("open warden state");
     let config = Config {
         github_connection: env("GITHUB_CONNECTION_ID"),
+        ollama_connection: env("OLLAMA_CONNECTION_ID"),
         admin_token: env("WARDEN_ADMIN_TOKEN"),
         agent_sprite: env("AGENT_SPRITE").unwrap_or_else(|| "mandate-agent".into()),
         checkpoint_on_write: flag("WARDEN_CHECKPOINT_ON_WRITE"),
@@ -102,6 +140,7 @@ async fn main() {
         .route("/v1/admin/agent/checkpoint", post(checkpoint_agent))
         .route("/v1/admin/agent/restore", post(restore_agent))
         .route("/v1/gateway/github/{*path}", any(github))
+        .route("/v1/gateway/ollama/{*path}", any(ollama))
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(app);
 
@@ -337,6 +376,14 @@ fn explain(reason: &DenyReason) -> String {
 }
 
 async fn github(State(app): State<Shared>, request: Request) -> Response {
+    gateway(app, Provider::Github, request).await
+}
+
+async fn ollama(State(app): State<Shared>, request: Request) -> Response {
+    gateway(app, Provider::Ollama, request).await
+}
+
+async fn gateway(app: Shared, provider: Provider, request: Request) -> Response {
     let (parts, body) = request.into_parts();
     let body: Bytes = match axum::body::to_bytes(body, 5 * 1024 * 1024).await {
         Ok(b) => b,
@@ -357,7 +404,7 @@ async fn github(State(app): State<Shared>, request: Request) -> Response {
     let path = parts
         .uri
         .path()
-        .strip_prefix(GITHUB_PREFIX)
+        .strip_prefix(provider.prefix())
         .unwrap_or("")
         .to_string();
     let upstream_path = match parts.uri.query() {
@@ -388,7 +435,7 @@ async fn github(State(app): State<Shared>, request: Request) -> Response {
 
     // 2. What are they asking to do?
     let json_body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    let op = github::classify(&method, &path, &json_body);
+    let op = provider.classify(&method, &path, &json_body);
     let request = AuthorizationRequest {
         subject: subject.clone(),
         action: op.action.clone(),
@@ -402,7 +449,7 @@ async fn github(State(app): State<Shared>, request: Request) -> Response {
         at: t,
         agent: subject.0.clone(),
         method: method.clone(),
-        path: format!("/{path}"),
+        path: format!("{}/{path}", provider.name()),
         action: op.action.clone(),
         resource: op.resource.to_string(),
         recipient: op.recipient.clone(),
@@ -473,17 +520,17 @@ async fn github(State(app): State<Shared>, request: Request) -> Response {
         });
     }
 
-    let Some(connection) = app.config.github_connection.clone() else {
+    let Some(connection) = provider.connection(&app.config) else {
         return error(
             StatusCode::SERVICE_UNAVAILABLE,
             "NO_CONNECTOR",
-            "GITHUB_CONNECTION_ID is not set",
+            format!("no {} connection is configured", provider.name()),
         );
     };
     let upstream = app
         .sprites
         .forward(
-            "github",
+            provider.name(),
             &connection,
             &method,
             &upstream_path,

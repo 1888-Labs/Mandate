@@ -48,10 +48,10 @@ impl Sprites {
             path_and_query.trim_start_matches('/')
         );
         let method = Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
-        let mut req = self
-            .http
-            .request(method, url)
-            .header("accept", "application/vnd.github+json");
+        let mut req = self.http.request(method, url);
+        if provider == "github" {
+            req = req.header("accept", "application/vnd.github+json");
+        }
         if let Some(ct) = content_type {
             req = req.header("content-type", ct);
         }
