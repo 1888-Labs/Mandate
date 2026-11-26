@@ -1,0 +1,46 @@
+# The Warden and an agent on a private network. The agent has no
+# credentials: only its signing key and the Warden's address.
+#
+#   cp .env.example .env            # fill in WARDEN_ADMIN_TOKEN and a GitHub / Ollama credential
+#   docker compose up -d warden     # dashboard on http://localhost:8080
+#   docker compose run --rm agent warden-call keygen   # once: put the key in .env as MANDATE_AGENT_KEY
+#   docker compose run --rm agent mandate-agent "List the open issues"
+#
+# See docs/self-hosting.md.
+
+services:
+  warden:
+    image: ${MANDATE_IMAGE:-ghcr.io/1888-labs/mandate:latest}
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${WARDEN_PORT:-8080}:8080"
+    environment:
+      WARDEN_ADMIN_TOKEN: ${WARDEN_ADMIN_TOKEN:?set WARDEN_ADMIN_TOKEN in .env}
+      # Outside a Sprite there are no connectors: the Warden holds the keys.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - warden-data:/data
+    extra_hosts:
+      # Lets OLLAMA_URL=http://host.docker.internal:11434 reach Ollama on the host.
+      - "host.docker.internal:host-gateway"
+
+  agent:
+    image: ${MANDATE_IMAGE:-ghcr.io/1888-labs/mandate:latest}
+    build: .
+    profiles: ["agent"]
+    depends_on:
+      warden:
+        condition: service_healthy
+    environment:
+      MANDATE_WARDEN_URL: http://warden:8080
+      MANDATE_AGENT_KEY: ${MANDATE_AGENT_KEY:-}
+      MANDATE_REPO: ${MANDATE_REPO:-}
+      MANDATE_MODEL: ${MANDATE_MODEL:-}
+    command: ["mandate-agent", "--help"]
+
+volumes:
+  warden-data:

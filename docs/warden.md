@@ -118,7 +118,7 @@ An allowed call returns the upstream response with `x-mandate-decision: allow` a
 
 `reason` is a stable code from `mandate-core`: `NO_MANDATE`, `ACTION_NOT_ALLOWED`, `RESOURCE_NOT_ALLOWED`, `RECIPIENT_NOT_ALLOWED`, `AMOUNT_EXCEEDED`, `EXPIRED`, `REVOKED`, `ANCESTOR_REVOKED`, `INVALID_SIGNATURE`, `INVALID_DELEGATION` or `UNTRUSTED_ROOT`. `note` is present only when the Warden did something extra, such as a restore.
 
-Other errors: `502 UPSTREAM_ERROR` (the connector call failed), `503 NO_CONNECTOR` (no connection configured for that provider), `413 BODY_TOO_LARGE` (over 5 MiB).
+Other errors: `502 UPSTREAM_ERROR` (the connector call failed), `503 NO_CONNECTOR` (neither a connection nor a direct credential is configured for that provider), `413 BODY_TOO_LARGE` (over 5 MiB).
 
 ## Configuration
 
@@ -129,6 +129,10 @@ Other errors: `502 UPSTREAM_ERROR` (the connector call failed), `503 NO_CONNECTO
 | `WARDEN_ADMIN_TOKEN` | unset | Enables the admin routes |
 | `GITHUB_CONNECTION_ID` | unset | Sprites GitHub connection to forward through |
 | `OLLAMA_CONNECTION_ID` | unset | Sprites Ollama connection to forward through |
+| `GITHUB_TOKEN` | unset | Outside Sprites: a GitHub token the Warden calls the API with directly. Ignored when `GITHUB_CONNECTION_ID` is set |
+| `GITHUB_API_URL` | `https://api.github.com` | GitHub API base for direct mode (GitHub Enterprise) |
+| `OLLAMA_URL` | unset | Outside Sprites: Ollama base URL for direct mode, e.g. `http://host.docker.internal:11434` or `https://ollama.com`. Ignored when `OLLAMA_CONNECTION_ID` is set |
+| `OLLAMA_API_KEY` | unset | Bearer key for `OLLAMA_URL` (Ollama cloud) |
 | `SPRITES_TOKEN` | unset | Sprites API token; needed for checkpoints and restores |
 | `AGENT_SPRITE` | `mandate-agent` | The Sprite to checkpoint and restore |
 | `WARDEN_CHECKPOINT_ON_WRITE` | off | Checkpoint the agent before every allowed write (timeout 60 s) |

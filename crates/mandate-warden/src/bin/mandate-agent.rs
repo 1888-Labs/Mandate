@@ -28,9 +28,16 @@ const MAX_TOOL_OUTPUT: usize = 6000;
 #[tokio::main]
 async fn main() -> ExitCode {
     let task = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
-    if task.trim().is_empty() {
-        eprintln!("usage: mandate-agent \"<task>\"");
-        return ExitCode::FAILURE;
+    if task.trim().is_empty() || matches!(task.trim(), "-h" | "--help" | "help") {
+        eprintln!(
+            "usage: mandate-agent \"<task>\"\n\
+             env: MANDATE_AGENT_KEY, MANDATE_WARDEN_URL, MANDATE_REPO, MANDATE_MODEL, MANDATE_MAX_STEPS"
+        );
+        return if task.trim().is_empty() {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        };
     }
     let client = match WardenClient::from_env() {
         Ok(c) => c,

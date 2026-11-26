@@ -60,17 +60,37 @@ impl Provider {
         }
     }
 
-    fn connection(self, config: &Config) -> Option<String> {
-        match self {
-            Provider::Github => config.github_connection.clone(),
-            Provider::Ollama => config.ollama_connection.clone(),
+    /// Where this provider's calls go: its Sprites connector when one is
+    /// configured, otherwise the provider's API with a Warden-held key.
+    fn route(self, config: &Config) -> Option<Route> {
+        let (connection, direct) = match self {
+            Provider::Github => (&config.github_connection, &config.github_direct),
+            Provider::Ollama => (&config.ollama_connection, &config.ollama_direct),
+        };
+        match (connection, direct) {
+            (Some(id), _) => Some(Route::Connector(id.clone())),
+            (None, Some(d)) => Some(Route::Direct(d.clone())),
+            (None, None) => None,
         }
     }
+}
+
+#[derive(Clone)]
+struct Direct {
+    base: String,
+    token: Option<String>,
+}
+
+enum Route {
+    Connector(String),
+    Direct(Direct),
 }
 
 struct Config {
     github_connection: Option<String>,
     ollama_connection: Option<String>,
+    github_direct: Option<Direct>,
+    ollama_direct: Option<Direct>,
     admin_token: Option<String>,
     agent_sprite: String,
     checkpoint_on_write: bool,
@@ -112,6 +132,14 @@ async fn main() {
     let config = Config {
         github_connection: env("GITHUB_CONNECTION_ID"),
         ollama_connection: env("OLLAMA_CONNECTION_ID"),
+        github_direct: env("GITHUB_TOKEN").map(|token| Direct {
+            base: env("GITHUB_API_URL").unwrap_or_else(|| "https://api.github.com".into()),
+            token: Some(token),
+        }),
+        ollama_direct: env("OLLAMA_URL").map(|base| Direct {
+            base,
+            token: env("OLLAMA_API_KEY"),
+        }),
         admin_token: env("WARDEN_ADMIN_TOKEN"),
         agent_sprite: env("AGENT_SPRITE").unwrap_or_else(|| "mandate-agent".into()),
         checkpoint_on_write: flag("WARDEN_CHECKPOINT_ON_WRITE"),
@@ -122,7 +150,19 @@ async fn main() {
         env("SPRITES_API").unwrap_or_else(|| "https://api.sprites.dev".into()),
         env("SPRITES_TOKEN"),
     );
-    info!(owner = %state.owner(), admin = config.admin_token.is_some(), manage = sprites.can_manage(), "warden starting");
+    let mode = |p: Provider| match p.route(&config) {
+        Some(Route::Connector(_)) => "sprites-connector",
+        Some(Route::Direct(_)) => "direct",
+        None => "off",
+    };
+    info!(
+        owner = %state.owner(),
+        admin = config.admin_token.is_some(),
+        manage = sprites.can_manage(),
+        github = mode(Provider::Github),
+        ollama = mode(Provider::Ollama),
+        "warden starting"
+    );
 
     let app = Arc::new(App {
         config,
@@ -169,6 +209,8 @@ fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response
         .into_response()
 }
 
+// The error is a ready-to-send response; boxing it buys nothing here.
+#[allow(clippy::result_large_err)]
 fn require_admin(app: &App, headers: &HeaderMap) -> Result<(), Response> {
     let Some(expected) = &app.config.admin_token else {
         return Err(error(
@@ -515,24 +557,44 @@ async fn gateway(app: Shared, provider: Provider, request: Request) -> Response 
         });
     }
 
-    let Some(connection) = provider.connection(&app.config) else {
+    let Some(route) = provider.route(&app.config) else {
         return error(
             StatusCode::SERVICE_UNAVAILABLE,
             "NO_CONNECTOR",
-            format!("no {} connection is configured", provider.name()),
+            format!(
+                "no {} connector or direct credential is configured",
+                provider.name()
+            ),
         );
     };
-    let upstream = app
-        .sprites
-        .forward(
-            provider.name(),
-            &connection,
-            &method,
-            &upstream_path,
-            header("content-type"),
-            body.to_vec(),
-        )
-        .await;
+    let content_type = header("content-type");
+    let upstream = match &route {
+        Route::Connector(id) => {
+            app.sprites
+                .forward(
+                    provider.name(),
+                    id,
+                    &method,
+                    &upstream_path,
+                    content_type,
+                    body.to_vec(),
+                )
+                .await
+        }
+        Route::Direct(d) => {
+            app.sprites
+                .direct(
+                    provider.name(),
+                    &d.base,
+                    d.token.as_deref(),
+                    &method,
+                    &upstream_path,
+                    content_type,
+                    body.to_vec(),
+                )
+                .await
+        }
+    };
     match upstream {
         Ok(up) => {
             record.upstream_status = Some(up.status);

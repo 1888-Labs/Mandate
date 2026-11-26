@@ -75,6 +75,9 @@ pub fn sign_revocation(
 ///
 /// Used by agents to prove which principal sent a request; pair it with
 /// [`crate::recover_signer`] on the receiving side.
-pub fn sign_message(message: &[u8; 32], key: &SigningKey) -> Result<[u8; SIGNATURE_LEN], SignatureError> {
+pub fn sign_message(
+    message: &[u8; 32],
+    key: &SigningKey,
+) -> Result<[u8; SIGNATURE_LEN], SignatureError> {
     personal_sign(message, key)
 }

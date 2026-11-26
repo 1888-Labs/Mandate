@@ -47,10 +47,51 @@ impl Sprites {
             self.gateway_base,
             path_and_query.trim_start_matches('/')
         );
+        self.send(provider, &url, None, method, content_type, body)
+            .await
+    }
+
+    /// Call the provider's API directly with a credential the Warden holds.
+    /// For running outside a Sprite (Docker, a laptop), where there are no
+    /// connectors. The agent still never sees the credential.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn direct(
+        &self,
+        provider: &str,
+        base: &str,
+        token: Option<&str>,
+        method: &str,
+        path_and_query: &str,
+        content_type: Option<&str>,
+        body: Vec<u8>,
+    ) -> Result<Upstream, String> {
+        let url = format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            path_and_query.trim_start_matches('/')
+        );
+        self.send(provider, &url, token, method, content_type, body)
+            .await
+    }
+
+    async fn send(
+        &self,
+        provider: &str,
+        url: &str,
+        token: Option<&str>,
+        method: &str,
+        content_type: Option<&str>,
+        body: Vec<u8>,
+    ) -> Result<Upstream, String> {
         let method = Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
         let mut req = self.http.request(method, url);
         if provider == "github" {
-            req = req.header("accept", "application/vnd.github+json");
+            req = req
+                .header("accept", "application/vnd.github+json")
+                .header("user-agent", "mandate-warden");
+        }
+        if let Some(token) = token {
+            req = req.bearer_auth(token);
         }
         if let Some(ct) = content_type {
             req = req.header("content-type", ct);
