@@ -4,7 +4,7 @@
   <a href="https://github.com/1888-Labs/Mandate">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
-      <img alt="Mandate" src=".github/logo-light.svg" width="auto" height="80">
+      <img alt="Mandate" src=".github/logo-light.svg" width="auto" height="44">
     </picture>
   </a>
 </p>
@@ -22,11 +22,12 @@
 
 A personal coding agent runs on its own Sprite. It has no GitHub token, no model API key, and a network policy that only lets it reach one place: the **Mandate Warden**, a second Sprite and the only one allowed to use the Sprites connectors. Every call the agent makes, both to *think* (Ollama) and to *act* (GitHub), is signed with the agent's key. The Warden checks each one against signed, scoped, revocable mandates before forwarding it. Denials come back with a reason (`RECIPIENT_NOT_ALLOWED`, `NO_MANDATE`, `REVOKED`, …). If the agent tries a write it isn't allowed, the Warden can roll its Sprite back to the last known-good checkpoint.
 
-```text
-mandate-agent Sprite ──signed call──▶ Mandate Warden Sprite ──▶ GitHub connector
-  (egress: Warden only)               verify · classify ·   ──▶ Ollama connector
-                                      authorize · log      ──▶ Sprites API (checkpoint / restore)
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/flow-dark.svg">
+    <img alt="The agent Sprite sends signed calls to the Mandate Warden Sprite, which verifies, classifies, authorizes and logs each one, forwards allowed calls to the GitHub and Ollama connectors, returns denials with a reason, and checkpoints or restores the agent through the Sprites API." src=".github/flow-light.svg" width="100%">
+  </picture>
+</p>
 
 ## What it looks like
 
@@ -47,6 +48,19 @@ The request to update README.md on the main branch was denied by the Mandate War
 
 The model call that planned this went through the Warden too, checked against the `model.chat` mandate. Revoke the mandate from the Warden, and the next call is denied with `REVOKED`.
 
+## Run it with Docker
+
+The same Warden runs anywhere. Outside a Sprite there are no connectors, so the Warden holds the GitHub token and Ollama key itself. The agent still holds nothing but its signing key.
+
+```sh
+cp .env.example .env                                   # set WARDEN_ADMIN_TOKEN, GITHUB_TOKEN, OLLAMA_URL
+docker compose up -d warden                            # dashboard on http://localhost:8080
+docker compose run --rm agent warden-call keygen       # put the key in .env as MANDATE_AGENT_KEY
+docker compose run --rm agent mandate-agent "List the open issues"
+```
+
+The image is `ghcr.io/1888-labs/mandate`. See [self-hosting](docs/self-hosting.md) for granting mandates and running against a local Ollama.
+
 ## Crates
 
 | Crate | What it is |
@@ -60,6 +74,7 @@ The model call that planned this went through the Warden too, checked against th
 
 - [Architecture](docs/architecture.md): two Sprites, and how each call is decided
 - [The Warden](docs/warden.md): HTTP API, request signing, classification, configuration, and setting up two Sprites
+- [Self-hosting](docs/self-hosting.md): the Docker image and Compose, with Warden-held credentials
 - [Protocol](docs/protocol.md): mandates, delegation, revocation and deny codes
 - [Security](docs/security.md): what's defended and what isn't
 - [CLI](docs/cli.md) and [library](docs/library.md)
