@@ -4,127 +4,259 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mandate Warden</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='20' fill='%237B3BE2'/%3E%3Ccircle cx='60' cy='60' r='26' fill='none' stroke='%23FFFFFF' stroke-width='12'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='28' fill='%237B3BE2'/%3E%3Cpath d='M60 24l28 11v21c0 19-12 33-28 40-16-7-28-21-28-40V35z' fill='none' stroke='%23fff' stroke-width='9' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
   :root {
-    --bg: #F6F4FE; --panel: #FFFFFF; --line: #E6E1F7; --text: #1C1640; --muted: #6B6590;
+    --bg: #F6F4FE; --panel: #FFFFFF; --panel-2: #FBFAFF; --line: #E6E1F7; --text: #1C1640; --muted: #6B6590;
     --violet: #7B3BE2; --violet-soft: #EFE7FD; --deep: #24175B;
     --allow: #1F9D55; --allow-soft: #E3F6EB; --deny: #E5484D; --deny-soft: #FDECEC;
+    --shadow: 0 1px 2px rgba(36,23,91,.04), 0 8px 24px rgba(36,23,91,.06);
     --mono: "JetBrains Mono", ui-monospace, monospace;
     --sans: "Inter", system-ui, sans-serif;
-    --shadow: 0 1px 2px rgba(36,23,91,.04), 0 8px 24px rgba(36,23,91,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E0B1F; --panel: #171230; --panel-2: #1C1638; --line: #2D2556; --text: #F1EEFF; --muted: #A49DCC;
+      --violet: #9D6BFF; --violet-soft: #2A1F5C; --deep: #F1EEFF;
+      --allow: #3FD07F; --allow-soft: #12301F; --deny: #FF6369; --deny-soft: #3A1720;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E0B1F; --panel: #171230; --panel-2: #1C1638; --line: #2D2556; --text: #F1EEFF; --muted: #A49DCC;
+    --violet: #9D6BFF; --violet-soft: #2A1F5C; --deep: #F1EEFF;
+    --allow: #3FD07F; --allow-soft: #12301F; --deny: #FF6369; --deny-soft: #3A1720;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
-  a { color: var(--violet); }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+  code { font: 500 12px var(--mono); color: var(--text); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 26px 16px 60px; }
+
   header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  header svg { width: 40px; height: 40px; flex: none; }
-  h1 { font-size: 24px; font-weight: 700; color: var(--deep); letter-spacing: -0.02em; margin: 0; }
+  header .logo { width: 42px; height: 42px; flex: none; }
+  h1 { font-size: 24px; font-weight: 800; color: var(--deep); letter-spacing: -0.02em; margin: 0; }
   .eyebrow { font: 500 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
-  .live { margin-left: auto; display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--muted); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--allow); box-shadow: 0 0 0 0 rgba(31,157,85,.5); animation: pulse 2s infinite; }
+  .head-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .live { display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--allow); animation: pulse 2s infinite; }
   .dot.off { background: var(--muted); animation: none; }
-  @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(31,157,85,0); } 100% { box-shadow: 0 0 0 0 rgba(31,157,85,0); } }
-  .tagline { margin: 18px 0 22px; color: var(--muted); max-width: 60ch; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(31,157,85,.5); } 70% { box-shadow: 0 0 0 8px rgba(31,157,85,0); } 100% { box-shadow: 0 0 0 0 rgba(31,157,85,0); } }
+  .icon-btn { background: var(--panel); border: 1px solid var(--line); color: var(--muted); border-radius: 10px; width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .icon-btn:hover { color: var(--violet); border-color: var(--violet); }
+  .tagline { margin: 16px 0 20px; color: var(--muted); max-width: 64ch; }
   .tagline b { color: var(--violet); font-weight: 600; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
-  .stat { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 14px; padding: 14px 16px; }
-  .stat .n { font: 700 28px var(--sans); color: var(--deep); letter-spacing: -0.02em; }
-  .stat.deny .n { color: var(--deny); }
-  .stat.allow .n { color: var(--allow); }
-  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; align-items: start; }
-  section { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 16px; overflow: hidden; }
-  section > h2 { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
-  .feed { max-height: 640px; overflow-y: auto; }
-  .row { padding: 12px 16px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 70px 1fr; gap: 12px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 16px; }
+  .card > h2 { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  /* Hero: the latest decision */
+  .top { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .hero { padding: 20px 22px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  .hero .spacer { flex: 1; min-height: 12px; }
+  .hero::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--line); }
+  .hero.allow::before { background: var(--allow); }
+  .hero.deny::before { background: var(--deny); }
+  .hero.bump { animation: bump .7s ease-out; }
+  @keyframes bump { 0% { transform: scale(.985); box-shadow: 0 0 0 4px var(--violet-soft); } 100% { transform: none; } }
+  .verdict { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .verdict .big { font: 800 34px var(--sans); letter-spacing: -0.03em; }
+  .hero.allow .big { color: var(--allow); }
+  .hero.deny .big { color: var(--deny); }
+  .verdict .call { font: 500 14px var(--mono); word-break: break-all; }
+  .verdict .call .m { color: var(--muted); }
+  .hero .why { margin-top: 12px; }
+  .chain { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .node { display: inline-flex; align-items: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  .node b { color: var(--text); font-weight: 600; }
+  .arrow { color: var(--violet); font-weight: 700; }
+  .strip { display: flex; gap: 4px; margin-top: 8px; height: 44px; align-items: flex-end; padding: 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; }
+  .tick { flex: 1; min-width: 3px; max-width: 28px; border-radius: 4px; background: var(--allow); opacity: .75; height: 60%; }
+  .tick.deny { background: var(--deny); opacity: 1; height: 100%; }
+  .tick.model { height: 40%; opacity: .45; }
+  .strip-legend { display: flex; justify-content: space-between; margin-top: 6px; font: 500 10.5px var(--mono); color: var(--muted); letter-spacing: .06em; }
+
+  .agent { padding: 18px 20px; display: grid; gap: 12px; align-content: start; }
+  .agent .addr { font: 700 15px var(--mono); color: var(--deep); word-break: break-all; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fact { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .fact .n { font: 800 22px var(--sans); letter-spacing: -0.02em; color: var(--deep); }
+  .fact.allow .n { color: var(--allow); }
+  .fact.deny .n { color: var(--deny); }
+  .reach { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: 500 11px var(--mono); padding: 3px 8px; border-radius: 999px; background: var(--violet-soft); color: var(--violet); }
+  .chip.no { background: var(--deny-soft); color: var(--deny); }
+
+  .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  .side { display: grid; gap: 16px; }
+
+  .tabs { display: flex; gap: 4px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .tabs button { background: transparent; border: 0; color: var(--muted); font: 600 12px var(--sans); padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+  .tabs button.on { background: var(--panel); color: var(--violet); box-shadow: var(--shadow); }
+  .feed { max-height: 680px; overflow-y: auto; }
+  .row { padding: 12px 16px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 66px 1fr auto; gap: 12px; cursor: pointer; }
+  .row:hover { background: var(--panel-2); }
   .row:last-child { border-bottom: 0; }
-  .row.fresh { animation: flash 1.6s ease-out; }
+  .row.fresh { animation: flash 1.8s ease-out; }
   @keyframes flash { from { background: var(--violet-soft); } to { background: transparent; } }
   .badge { font: 700 11px var(--mono); letter-spacing: .08em; padding: 3px 0; border-radius: 6px; text-align: center; height: fit-content; }
   .badge.allow { color: var(--allow); background: var(--allow-soft); }
   .badge.deny { color: #fff; background: var(--deny); }
   .what { font: 500 13px var(--mono); word-break: break-all; }
   .what .m { color: var(--muted); }
+  .kind { font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); align-self: start; padding-top: 3px; }
   .meta { font-size: 13px; color: var(--muted); margin-top: 3px; }
-  .meta code, .mandate code { font: 500 12px var(--mono); color: var(--text); }
-  .why { margin-top: 6px; font-size: 13px; color: var(--text); background: var(--deny-soft); border-radius: 0 6px 6px 0; padding: 6px 10px; border-left: 3px solid var(--deny); }
+  .why { margin-top: 6px; font-size: 13px; color: var(--text); background: var(--deny-soft); border-left: 3px solid var(--deny); border-radius: 0 8px 8px 0; padding: 6px 10px; }
   .note { margin-top: 6px; font: 500 12px var(--mono); color: var(--muted); }
   .note::before { content: "↺ "; color: var(--violet); }
+  .detail { display: none; margin-top: 10px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; }
+  .row.open .detail { display: grid; gap: 4px; }
+  .detail div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+  .detail span:first-child { color: var(--muted); }
+  .detail code { word-break: break-all; }
+
+  .group { padding: 10px 16px 4px; font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--violet); background: var(--panel-2); border-bottom: 1px solid var(--line); }
   .mandate { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
-  .mandate:last-child { border-bottom: 0; }
   .mandate .body { flex: 1; min-width: 0; }
   .mandate .act { font: 700 13px var(--mono); }
   .mandate.revoked .act { text-decoration: line-through; color: var(--muted); }
-  .pill { font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
-  .pill.revoked { color: var(--deny); border-color: var(--deny); }
-  button { font: 600 12px var(--sans); background: var(--violet-soft); color: var(--text); border: 1px solid transparent; border-radius: 8px; padding: 7px 12px; cursor: pointer; color: var(--violet); }
-  button:hover { background: var(--violet); color: #fff; }
-  button.danger { color: var(--deny); background: var(--deny-soft); }
-  button.danger:hover { background: var(--deny); color: #fff; }
-  button:disabled { opacity: .4; cursor: default; }
-  .controls { padding: 14px 16px; display: grid; gap: 10px; }
-  .controls input { width: 100%; font: 500 12px var(--mono); background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-  .controls .btns { display: flex; gap: 8px; flex-wrap: wrap; }
-  .toast { font: 500 12px var(--mono); color: var(--muted); min-height: 1.5em; }
-  .side { display: grid; gap: 18px; }
+  .mandate.flash { animation: flashred 1.8s ease-out; }
+  @keyframes flashred { from { background: var(--deny-soft); } to { background: transparent; } }
+  .pill { font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; margin-left: 6px; color: var(--deny); border: 1px solid var(--deny); }
+
+  button.btn { font: 600 12px var(--sans); background: var(--violet-soft); color: var(--violet); border: 1px solid transparent; border-radius: 8px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  button.btn:hover { background: var(--violet); color: #fff; }
+  button.btn.primary { background: var(--violet); color: #fff; }
+  button.btn.primary:hover { filter: brightness(1.1); }
+  button.btn.danger { color: var(--deny); background: var(--deny-soft); }
+  button.btn.danger:hover { background: var(--deny); color: #fff; }
+  button.btn:disabled { opacity: .45; cursor: default; pointer-events: none; }
+  .controls { padding: 14px 16px; display: grid; gap: 12px; }
+  .controls label { display: grid; gap: 4px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  input, select { width: 100%; font: 500 13px var(--mono); background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  input:focus, select:focus { outline: 2px solid var(--violet-soft); border-color: var(--violet); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  details.grant { border-top: 1px solid var(--line); padding-top: 12px; }
+  details.grant summary { cursor: pointer; font: 600 13px var(--sans); color: var(--violet); list-style: none; }
+  details.grant summary::before { content: "+ "; }
+  details.grant[open] summary::before { content: "− "; }
+  details.grant .controls { padding: 12px 0 0; }
+  .toast { font: 500 12px var(--mono); color: var(--muted); min-height: 1.4em; }
+  .toast.err { color: var(--deny); }
+  .toast.ok { color: var(--allow); }
   .empty { padding: 24px 16px; color: var(--muted); font-size: 14px; }
-  footer { margin-top: 28px; font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-  @media (max-width: 900px) {
-    .grid { grid-template-columns: 1fr; }
-    .stats { grid-template-columns: repeat(2, 1fr); }
-    .live { margin-left: 0; width: 100%; }
+  footer { margin-top: 28px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  footer a { color: var(--violet); text-decoration: none; }
+
+  @media (max-width: 960px) {
+    .top, .grid { grid-template-columns: 1fr; }
+    .row { grid-template-columns: 60px 1fr; }
+    .kind { display: none; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <svg viewBox="0 0 120 120" aria-hidden="true"><rect width="120" height="120" rx="28" fill="#7B3BE2"/><path d="M60 24l28 11v21c0 19-12 33-28 40-16-7-28-21-28-40V35z" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/><path d="M47 60l9 9 18-19" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg class="logo" viewBox="0 0 120 120" aria-hidden="true"><rect width="120" height="120" rx="28" fill="#7B3BE2"/><path d="M60 24l28 11v21c0 19-12 33-28 40-16-7-28-21-28-40V35z" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round"/><path d="M47 60l9 9 18-19" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <div>
       <div class="eyebrow">Fly.io Sprites · Hacksgiving</div>
       <h1>Mandate Warden</h1>
     </div>
-    <div class="live"><span class="dot off" id="dot"></span><span id="live">connecting…</span></div>
+    <div class="head-right">
+      <div class="live"><span class="dot off" id="dot"></span><span id="live">connecting…</span></div>
+      <button class="icon-btn" id="theme" title="Toggle light / dark" aria-label="Toggle light or dark theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
   </header>
 
-  <p class="tagline">Every call the agent makes, to its model or to GitHub, is signed by its key and checked here against a mandate its owner signed. <b>The prompt is not the security boundary. Mandate is.</b></p>
+  <p class="tagline">Every call the agent makes, to its model or to GitHub, is signed with its key and checked here against a mandate its owner signed. <b>The prompt is not the security boundary. Mandate is.</b></p>
 
-  <div class="stats">
-    <div class="stat allow"><div class="eyebrow">Allowed</div><div class="n" id="s-allow">–</div></div>
-    <div class="stat deny"><div class="eyebrow">Denied</div><div class="n" id="s-deny">–</div></div>
-    <div class="stat"><div class="eyebrow">Active mandates</div><div class="n" id="s-mandates">–</div></div>
-    <div class="stat"><div class="eyebrow">Known-good checkpoint</div><div class="n" id="s-cp">–</div></div>
+  <div class="top">
+    <div class="card hero" id="hero">
+      <div class="eyebrow">Latest decision</div>
+      <div id="hero-body"><div class="verdict"><span class="big" style="color:var(--muted)">Waiting</span><span class="call">for the agent's first call…</span></div></div>
+      <div class="spacer"></div>
+      <div class="eyebrow">Last 60 calls</div>
+      <div class="strip" id="strip" aria-label="Recent decisions"></div>
+      <div class="strip-legend"><span id="strip-from">older</span><span><span style="color:var(--allow)">■ allow</span> &nbsp;<span style="color:var(--deny)">■ deny</span> &nbsp;<span style="color:var(--allow);opacity:.6">▪ model call</span></span><span>now</span></div>
+    </div>
+
+    <div class="card agent">
+      <div class="eyebrow">Agent</div>
+      <div class="addr" id="agent-addr">–</div>
+      <div class="facts">
+        <div class="fact allow"><div class="eyebrow">Allowed</div><div class="n" id="s-allow">–</div></div>
+        <div class="fact deny"><div class="eyebrow">Denied</div><div class="n" id="s-deny">–</div></div>
+        <div class="fact"><div class="eyebrow">Active mandates</div><div class="n" id="s-mandates">–</div></div>
+        <div class="fact"><div class="eyebrow">Known-good</div><div class="n" id="s-cp">–</div></div>
+      </div>
+      <div>
+        <div class="eyebrow" style="margin-bottom:6px">Holds</div>
+        <div class="reach"><span class="chip">its signing key</span><span class="chip no">no GitHub token</span><span class="chip no">no model key</span></div>
+      </div>
+      <div class="meta" id="agent-last">No calls yet.</div>
+    </div>
   </div>
 
   <div class="grid">
-    <section>
-      <h2><span class="eyebrow">Decisions · live</span><span class="eyebrow" id="agent-name"></span></h2>
+    <section class="card">
+      <h2>
+        <span class="eyebrow">Decisions · live</span>
+        <div class="tabs" id="tabs">
+          <button data-f="all" class="on">All</button>
+          <button data-f="deny">Denied</button>
+          <button data-f="github">GitHub</button>
+          <button data-f="model">Model</button>
+        </div>
+      </h2>
       <div class="feed" id="feed"><div class="empty">No calls yet.</div></div>
     </section>
 
     <div class="side">
-      <section>
+      <section class="card">
         <h2><span class="eyebrow">Mandates</span><span class="eyebrow" id="owner"></span></h2>
         <div id="mandates"><div class="empty">No mandates.</div></div>
       </section>
-      <section>
+
+      <section class="card">
         <h2><span class="eyebrow">Owner controls</span></h2>
         <div class="controls">
-          <input id="token" type="password" placeholder="Admin token (kept in this browser)" autocomplete="off">
+          <input id="token" type="password" placeholder="Admin token (kept in this browser)" autocomplete="off" aria-label="Admin token">
           <div class="btns">
-            <button id="cp">Checkpoint agent as known-good</button>
-            <button id="restore" class="danger">Restore agent</button>
+            <button class="btn" id="cp">Checkpoint as known-good</button>
+            <button class="btn danger" id="restore">Restore agent</button>
           </div>
-          <div class="toast" id="toast"></div>
+          <details class="grant">
+            <summary>Grant a mandate</summary>
+            <div class="controls">
+              <label>Action
+                <select id="g-action">
+                  <option>read</option><option>issues.create</option><option>issues.comment</option><option>issues.update</option><option>issues.label</option>
+                  <option>refs.create</option><option>git.objects</option><option>contents.write</option><option>pulls.create</option><option>pulls.merge</option>
+                  <option>model.chat</option>
+                </select>
+              </label>
+              <label>Resource <input id="g-resource" placeholder="github:owner/repo or ollama:cloud"></label>
+              <label>Only these targets (branch or model, comma-separated) <input id="g-only" placeholder="agent/work"></label>
+              <div class="row2">
+                <label>Expires in (hours) <input id="g-hours" type="number" min="1" value="24"></label>
+                <label>Agent <input id="g-subject" placeholder="0x…"></label>
+              </div>
+              <button class="btn primary" id="grant">Sign and grant</button>
+            </div>
+          </details>
+          <div class="toast" id="toast" role="status"></div>
         </div>
       </section>
     </div>
   </div>
 
-  <footer>Runs on Fly.io Sprites · built by 1888 Labs</footer>
+  <footer><span>Runs on Fly.io Sprites · built by 1888 Labs</span><a href="https://github.com/1888-Labs/Mandate">github.com/1888-Labs/Mandate</a></footer>
 </div>
 
 <script>
@@ -146,6 +278,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const short = (a) => a ? a.slice(0, 6) + "…" + a.slice(-4) : "";
 const ago = (t) => {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - t));
+  if (s < 5) return "just now";
   if (s < 60) return s + "s ago";
   if (s < 3600) return Math.floor(s / 60) + "m ago";
   if (s < 86400) return Math.floor(s / 3600) + "h ago";
@@ -158,61 +291,147 @@ const until = (t) => {
   if (s < 86400) return "expires in " + Math.ceil(s / 3600) + "h";
   return "expires in " + Math.ceil(s / 86400) + "d";
 };
+const isModel = (d) => d.resource.startsWith("ollama:");
+const keyOf = (d) => d.at + "|" + d.method + "|" + d.path + "|" + d.decision;
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
 
-let token = "";
-try { token = localStorage.getItem("warden-token") || ""; } catch {}
+// Theme
+const savedTheme = store.get("warden-theme");
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+$("theme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  store.set("warden-theme", next);
+});
+
+let token = store.get("warden-token");
 $("token").value = token;
 $("token").addEventListener("input", (e) => {
   token = e.target.value.trim();
-  try { localStorage.setItem("warden-token", token); } catch {}
+  store.set("warden-token", token);
+  render(last);
+});
+
+let filter = "all";
+$("tabs").addEventListener("click", (e) => {
+  const f = e.target.dataset && e.target.dataset.f;
+  if (!f) return;
+  filter = f;
+  [...$("tabs").children].forEach((b) => b.classList.toggle("on", b.dataset.f === f));
   render(last);
 });
 
 const seen = new Set();
+const open = new Set();
 let first = true;
 let last = null;
+let heroKey = "";
+let knownRevoked = null;
+
+function whyHtml(d) {
+  return d.decision === "deny"
+    ? `<div class="why"><b>${esc(d.reason)}</b> — ${esc(REASONS[d.reason] || "")}</div>` : "";
+}
+
+function chainHtml(path, labels) {
+  if (!path || !path.length) return "";
+  return path.map((p, i) => {
+    const role = i === 0 ? "Owner" : (i === path.length - 1 ? "Agent" : "Delegate");
+    return `<span class="node">${role} <b>${esc(short(p))}</b></span>`;
+  }).join('<span class="arrow">→</span>');
+}
+
+function renderHero(state) {
+  const d = state.decisions[0];
+  if (!d) return;
+  const key = keyOf(d);
+  const target = d.recipient ? ` → <code>${esc(d.recipient)}</code>` : "";
+  const path = isModel(d) ? d.path : d.path.replace(/^github\//, "");
+  const chain = d.delegationPath.length
+    ? `<div class="chain">${chainHtml(d.delegationPath)}<span>via mandate <code>${esc(short(d.mandateId))}</code></span></div>`
+    : `<div class="chain"><span class="node">Agent <b>${esc(short(d.agent))}</b></span><span>no mandate covers this call</span></div>`;
+  $("hero").className = "card hero " + d.decision + (key !== heroKey && heroKey ? " bump" : "");
+  $("hero-body").innerHTML = `
+    <div class="verdict"><span class="big">${d.decision === "deny" ? "DENIED" : "ALLOWED"}</span>
+      <span class="call"><span class="m">${esc(d.method)}</span> ${esc(path)}</span></div>
+    <div class="meta"><code>${esc(d.action)}</code> on <code>${esc(d.resource)}</code>${target} · ${ago(d.at)}${d.upstreamStatus ? " · HTTP " + d.upstreamStatus : ""}</div>
+    ${whyHtml(d)}${d.note ? `<div class="note">${esc(d.note)}</div>` : ""}${chain}`;
+  heroKey = key;
+
+  const recent = state.decisions.slice(0, 60).reverse();
+  $("strip").innerHTML = recent.map((x) =>
+    `<span class="tick ${x.decision}${isModel(x) && x.decision === "allow" ? " model" : ""}" title="${esc(x.decision.toUpperCase() + " · " + x.action + " · " + ago(x.at))}"></span>`
+  ).join("");
+  $("strip-from").textContent = recent.length ? ago(recent[0].at) : "older";
+}
 
 function renderFeed(decisions) {
-  if (!decisions.length) { $("feed").innerHTML = '<div class="empty">No calls yet.</div>'; return; }
-  $("feed").innerHTML = decisions.map((d) => {
-    const key = d.at + d.method + d.path + d.decision;
-    const fresh = !first && !seen.has(key);
-    seen.add(key);
-    const isModel = d.resource.startsWith("ollama:");
-    const target = d.recipient ? ` → <code>${esc(d.recipient)}</code>` : "";
-    const status = d.upstreamStatus ? ` · HTTP ${d.upstreamStatus}` : "";
-    const why = d.decision === "deny"
-      ? `<div class="why"><b>${esc(d.reason)}</b> — ${esc(REASONS[d.reason] || "")}</div>` : "";
-    const note = d.note ? `<div class="note">${esc(d.note)}</div>` : "";
-    return `<div class="row${fresh ? " fresh" : ""}">
-      <div class="badge ${d.decision}">${d.decision.toUpperCase()}</div>
-      <div>
-        <div class="what"><span class="m">${esc(d.method)}</span> ${esc(isModel ? d.path : d.path.replace(/^github\//, ""))}</div>
-        <div class="meta"><code>${esc(d.action)}</code> on <code>${esc(d.resource)}</code>${target} · ${ago(d.at)}${status}</div>
-        ${why}${note}
-      </div>
-    </div>`;
-  }).join("");
+  const list = decisions.filter((d) =>
+    filter === "all" ? true :
+    filter === "deny" ? d.decision === "deny" :
+    filter === "model" ? isModel(d) : !isModel(d));
+  if (!list.length) {
+    $("feed").innerHTML = `<div class="empty">${decisions.length ? "Nothing matches this filter." : "No calls yet."}</div>`;
+  } else {
+    $("feed").innerHTML = list.map((d) => {
+      const key = keyOf(d);
+      const fresh = !first && !seen.has(key);
+      const target = d.recipient ? ` → <code>${esc(d.recipient)}</code>` : "";
+      const path = isModel(d) ? d.path : d.path.replace(/^github\//, "");
+      const detail = [
+        ["agent", d.agent],
+        ["mandate", d.mandateId || "none"],
+        ["delegation", d.delegationPath.length ? d.delegationPath.join(" → ") : "none"],
+        ["upstream", d.upstreamStatus ? "HTTP " + d.upstreamStatus : (d.decision === "deny" ? "never forwarded" : "–")],
+        ["at", new Date(d.at * 1000).toLocaleString()],
+      ].map(([k, v]) => `<div><span>${k}</span><code>${esc(v)}</code></div>`).join("");
+      return `<div class="row${fresh ? " fresh" : ""}${open.has(key) ? " open" : ""}" data-key="${esc(key)}">
+        <div class="badge ${d.decision}">${d.decision.toUpperCase()}</div>
+        <div>
+          <div class="what"><span class="m">${esc(d.method)}</span> ${esc(path)}</div>
+          <div class="meta"><code>${esc(d.action)}</code> on <code>${esc(d.resource)}</code>${target} · ${ago(d.at)}${d.upstreamStatus ? " · HTTP " + d.upstreamStatus : ""}</div>
+          ${whyHtml(d)}${d.note ? `<div class="note">${esc(d.note)}</div>` : ""}
+          <div class="detail">${detail}</div>
+        </div>
+        <div class="kind">${isModel(d) ? "model" : "github"}</div>
+      </div>`;
+    }).join("");
+  }
+  decisions.forEach((d) => seen.add(keyOf(d)));
   first = false;
 }
 
 function renderMandates(state) {
   const revoked = new Set(state.revocations.map((r) => r.mandateId));
-  const list = [...state.mandates].sort((a, b) => (revoked.has(a.id) - revoked.has(b.id)) || a.issuedAt - b.issuedAt);
-  if (!list.length) { $("mandates").innerHTML = '<div class="empty">No mandates.</div>'; return; }
-  $("mandates").innerHTML = list.map((m) => {
-    const isRevoked = revoked.has(m.id);
-    const allowed = m.constraints.allowedRecipients;
-    const scope = allowed ? ` · only <code>${allowed.map(esc).join(", ")}</code>` : "";
-    const btn = isRevoked ? "" :
-      `<button class="danger" data-revoke="${esc(m.id)}" ${token ? "" : "disabled title='Enter the admin token'"}>Revoke</button>`;
-    return `<div class="mandate${isRevoked ? " revoked" : ""}">
-      <div class="body">
-        <div class="act">${esc(m.action)}${isRevoked ? '<span class="pill revoked">revoked</span>' : ""}</div>
-        <div class="meta"><code>${esc(m.resource.kind)}:${esc(m.resource.id)}</code>${scope}</div>
-        <div class="meta">${isRevoked ? "no longer authorizes anything" : until(m.expiresAt)} · <code>${short(m.id)}</code></div>
-      </div>${btn}
-    </div>`;
+  const newlyRevoked = knownRevoked ? [...revoked].filter((id) => !knownRevoked.has(id)) : [];
+  knownRevoked = revoked;
+  if (!state.mandates.length) { $("mandates").innerHTML = '<div class="empty">No mandates.</div>'; return; }
+  const groups = {};
+  for (const m of state.mandates) {
+    const g = m.resource.kind === "ollama" ? "Model · Ollama" : m.resource.kind === "github" ? "GitHub · " + m.resource.id : m.resource.kind;
+    (groups[g] = groups[g] || []).push(m);
+  }
+  $("mandates").innerHTML = Object.entries(groups).map(([g, list]) => {
+    list.sort((a, b) => (revoked.has(a.id) - revoked.has(b.id)) || a.issuedAt - b.issuedAt);
+    return `<div class="group">${esc(g)}</div>` + list.map((m) => {
+      const isRevoked = revoked.has(m.id);
+      const allowed = m.constraints.allowedRecipients;
+      const scope = allowed ? `only <code>${allowed.map(esc).join(", ")}</code> · ` : "";
+      const btn = isRevoked ? "" :
+        `<button class="btn danger" data-revoke="${esc(m.id)}" ${token ? "" : "disabled title='Enter the admin token'"}>Revoke</button>`;
+      return `<div class="mandate${isRevoked ? " revoked" : ""}${newlyRevoked.includes(m.id) ? " flash" : ""}">
+        <div class="body">
+          <div class="act">${esc(m.action)}${isRevoked ? '<span class="pill">revoked</span>' : ""}</div>
+          <div class="meta">${scope}${isRevoked ? "no longer authorizes anything" : until(m.expiresAt)} · <code>${short(m.id)}</code></div>
+        </div>${btn}
+      </div>`;
+    }).join("");
   }).join("");
 }
 
@@ -220,13 +439,19 @@ function render(state) {
   if (!state) return;
   const revoked = new Set(state.revocations.map((r) => r.mandateId));
   const now = Date.now() / 1000;
-  $("s-allow").textContent = state.decisions.filter((d) => d.decision === "allow").length;
-  $("s-deny").textContent = state.decisions.filter((d) => d.decision === "deny").length;
+  const allowN = state.decisions.filter((d) => d.decision === "allow").length;
+  $("s-allow").textContent = allowN;
+  $("s-deny").textContent = state.decisions.length - allowN;
   $("s-mandates").textContent = state.mandates.filter((m) => !revoked.has(m.id) && m.expiresAt > now).length;
   $("s-cp").textContent = state.goodCheckpoint || "none";
   $("owner").textContent = "owner " + short(state.owner);
-  const agents = [...new Set(state.mandates.map((m) => m.subject))];
-  $("agent-name").textContent = agents.length === 1 ? "agent " + short(agents[0]) : agents.length + " agents";
+  const agents = [...new Set(state.mandates.map((m) => m.subject).concat(state.decisions.map((d) => d.agent)))];
+  const agent = agents[0];
+  $("agent-addr").textContent = agents.length > 1 ? agents.length + " agents" : (agent || "–");
+  if (agent && !$("g-subject").value) $("g-subject").value = agent;
+  const lastCall = state.decisions[0];
+  $("agent-last").textContent = lastCall ? "Last call " + ago(lastCall.at) + " · " + state.decisions.length + " calls logged" : "No calls yet.";
+  renderHero(state);
   renderFeed(state.decisions);
   renderMandates(state);
 }
@@ -245,9 +470,14 @@ async function poll() {
   }
 }
 
+function toast(msg, kind) {
+  $("toast").textContent = msg;
+  $("toast").className = "toast" + (kind ? " " + kind : "");
+}
+
 async function admin(path, body, label) {
-  if (!token) { $("toast").textContent = "Enter the admin token first."; return; }
-  $("toast").textContent = label + "…";
+  if (!token) { toast("Enter the admin token first.", "err"); return; }
+  toast(label + "…");
   try {
     const res = await fetch(path, {
       method: "POST",
@@ -255,13 +485,21 @@ async function admin(path, body, label) {
       body: JSON.stringify(body),
     });
     const out = await res.json().catch(() => ({}));
-    $("toast").textContent = res.ok ? label + ": done " + (out.checkpoint || out.restored || "") : label + " failed: " + (out.message || res.status);
+    if (res.ok) toast(label + ": done " + (out.checkpoint || out.restored || (out.id ? short(out.id) : "")), "ok");
+    else toast(label + " failed: " + (out.message || res.status), "err");
   } catch (e) {
-    $("toast").textContent = label + " failed: " + e.message;
+    toast(label + " failed: " + e.message, "err");
   }
   poll();
 }
 
+$("feed").addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  const k = row.dataset.key;
+  open.has(k) ? open.delete(k) : open.add(k);
+  row.classList.toggle("open");
+});
 $("mandates").addEventListener("click", (e) => {
   const id = e.target.dataset && e.target.dataset.revoke;
   if (id && confirm("Revoke this mandate? The agent loses this authority immediately.")) {
@@ -272,6 +510,30 @@ $("cp").addEventListener("click", () => admin("v1/admin/agent/checkpoint", { mar
 $("restore").addEventListener("click", () => {
   if (confirm("Restore the agent Sprite to its known-good checkpoint?")) admin("v1/admin/agent/restore", {}, "Restore");
 });
+$("g-action").addEventListener("change", (e) => {
+  if (e.target.value === "model.chat") { $("g-resource").value = "ollama:cloud"; $("g-only").placeholder = "gpt-oss:120b"; }
+  else { $("g-only").placeholder = "agent/work"; }
+});
+$("grant").addEventListener("click", () => {
+  const only = $("g-only").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const body = {
+    subject: $("g-subject").value.trim(),
+    action: $("g-action").value,
+    resource: $("g-resource").value.trim(),
+    expiresIn: Math.max(1, Number($("g-hours").value) || 24) * 3600,
+  };
+  if (only.length) body.allowedRecipients = only;
+  if (!body.subject || !body.resource) { toast("Agent and resource are required.", "err"); return; }
+  admin("v1/admin/mandates", body, "Grant");
+});
+
+// Prefill the resource from the mandates once known.
+const prefill = setInterval(() => {
+  if (!last) return;
+  const gh = last.mandates.find((m) => m.resource.kind === "github");
+  if (gh && !$("g-resource").value) $("g-resource").value = "github:" + gh.resource.id;
+  clearInterval(prefill);
+}, 500);
 
 poll();
 setInterval(poll, 2000);
