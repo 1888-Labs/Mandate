@@ -41,7 +41,7 @@ Mandate is designed to reject each of the following. ✅ means it's implemented 
 
 Mandate enforces authority on the path that goes through the Warden. It does **not** protect against:
 
-- a compromised owner key, admin token or Warden Sprite
+- a compromised owner key or Warden Sprite
 - a misconfigured network or connector policy that lets the agent bypass the Warden
 - a malicious host or platform
 - bugs in GitHub, Ollama or the connectors
@@ -49,4 +49,4 @@ Mandate enforces authority on the path that goes through the Warden. It does **n
 - harm done by calls that are allowed: a mandate for `issues.create` lets the agent open any issue on that repository
 - **quantum adversaries:** mandates and requests use secp256k1 ECDSA, like Ethereum itself. A large enough quantum computer could forge these signatures.
 
-Admin routes are protected by a single bearer token. `GET /v1/state` and `POST /v1/mandates` are open by design: state contains no secrets, and submitted mandates grant nothing unless their chain leads back to the owner.
+Admin routes accept a signature from the owner key (`mandate-admin/1`, same skew and replay rules as agent calls). `Authorization: Bearer $WARDEN_ADMIN_TOKEN` still works so the dashboard can grant and revoke; it is a shared secret and a leak of it is enough to change authority. `GET /v1/state` and `POST /v1/mandates` are open by design: state contains no secrets, and submitted mandates grant nothing unless their chain leads back to the owner.

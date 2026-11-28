@@ -257,12 +257,46 @@ fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response
 
 // The error is a ready-to-send response; boxing it buys nothing here.
 #[allow(clippy::result_large_err)]
-fn require_admin(app: &App, headers: &HeaderMap) -> Result<(), Response> {
+async fn require_admin(
+    app: &App,
+    headers: &HeaderMap,
+    method: &str,
+    path_and_query: &str,
+    body: &[u8],
+) -> Result<(), Response> {
+    let signed = headers.contains_key("x-mandate-admin-timestamp")
+        || headers.contains_key("x-mandate-admin-signature");
+    if signed {
+        let owner = app.state.lock().await.owner();
+        let mut replay = app.replay.lock().await;
+        let timestamp = headers
+            .get("x-mandate-admin-timestamp")
+            .and_then(|v| v.to_str().ok());
+        let signature = headers
+            .get("x-mandate-admin-signature")
+            .and_then(|v| v.to_str().ok());
+        return match auth::verify_admin(
+            &owner,
+            timestamp,
+            signature,
+            method,
+            path_and_query,
+            body,
+            now(),
+            &mut replay,
+        ) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(error(StatusCode::UNAUTHORIZED, e.code(), format!("{e:?}"))),
+        };
+    }
+
+    // Legacy shared secret. The dashboard still uses this. Prefer an owner
+    // signature: a leaked token is enough to grant or revoke authority.
     let Some(expected) = &app.config.admin_token else {
         return Err(error(
-            StatusCode::FORBIDDEN,
-            "ADMIN_DISABLED",
-            "set WARDEN_ADMIN_TOKEN to enable admin endpoints",
+            StatusCode::UNAUTHORIZED,
+            "UNAUTHORIZED",
+            "owner signature or admin token required",
         ));
     };
     let given = headers
@@ -273,20 +307,58 @@ fn require_admin(app: &App, headers: &HeaderMap) -> Result<(), Response> {
         return Err(error(
             StatusCode::UNAUTHORIZED,
             "UNAUTHORIZED",
-            "admin token required",
+            "owner signature or admin token required",
         ));
     }
+    warn!("admin request authenticated with the legacy bearer token");
     Ok(())
 }
 
-async fn grant(
-    State(app): State<Shared>,
-    headers: HeaderMap,
-    Json(req): Json<GrantRequest>,
-) -> Response {
-    if let Err(r) = require_admin(&app, &headers) {
+const ADMIN_BODY_LIMIT: usize = 64 * 1024;
+
+#[allow(clippy::result_large_err)]
+async fn read_admin_body(
+    request: Request,
+) -> Result<(axum::http::request::Parts, Bytes), Response> {
+    let (parts, body) = request.into_parts();
+    match axum::body::to_bytes(body, ADMIN_BODY_LIMIT).await {
+        Ok(b) => Ok((parts, b)),
+        Err(_) => Err(error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "BODY_TOO_LARGE",
+            "admin request body over 64 KiB",
+        )),
+    }
+}
+
+fn path_and_query(parts: &axum::http::request::Parts) -> String {
+    parts
+        .uri
+        .path_and_query()
+        .map(|p| p.as_str().to_string())
+        .unwrap_or_else(|| parts.uri.path().to_string())
+}
+
+async fn grant(State(app): State<Shared>, request: Request) -> Response {
+    let (parts, body) = match read_admin_body(request).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if let Err(r) = require_admin(
+        &app,
+        &parts.headers,
+        parts.method.as_str(),
+        &path_and_query(&parts),
+        &body,
+    )
+    .await
+    {
         return r;
     }
+    let req: GrantRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => return error(StatusCode::BAD_REQUEST, "BAD_JSON", e.to_string()),
+    };
     match app.state.lock().await.grant(req, now()) {
         Ok(m) => (StatusCode::CREATED, Json(m)).into_response(),
         Err(e) => error(StatusCode::BAD_REQUEST, "BAD_GRANT", e),
@@ -315,14 +387,26 @@ struct RevokeBody {
     reason: Option<String>,
 }
 
-async fn revoke(
-    State(app): State<Shared>,
-    headers: HeaderMap,
-    Json(body): Json<RevokeBody>,
-) -> Response {
-    if let Err(r) = require_admin(&app, &headers) {
+async fn revoke(State(app): State<Shared>, request: Request) -> Response {
+    let (parts, body) = match read_admin_body(request).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if let Err(r) = require_admin(
+        &app,
+        &parts.headers,
+        parts.method.as_str(),
+        &path_and_query(&parts),
+        &body,
+    )
+    .await
+    {
         return r;
     }
+    let body: RevokeBody = match serde_json::from_slice(&body) {
+        Ok(b) => b,
+        Err(e) => return error(StatusCode::BAD_REQUEST, "BAD_JSON", e.to_string()),
+    };
     match app
         .state
         .lock()
@@ -344,15 +428,30 @@ struct CheckpointBody {
     mark_good: bool,
 }
 
-async fn checkpoint_agent(
-    State(app): State<Shared>,
-    headers: HeaderMap,
-    body: Option<Json<CheckpointBody>>,
-) -> Response {
-    if let Err(r) = require_admin(&app, &headers) {
+async fn checkpoint_agent(State(app): State<Shared>, request: Request) -> Response {
+    let (parts, raw) = match read_admin_body(request).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if let Err(r) = require_admin(
+        &app,
+        &parts.headers,
+        parts.method.as_str(),
+        &path_and_query(&parts),
+        &raw,
+    )
+    .await
+    {
         return r;
     }
-    let body = body.map(|b| b.0).unwrap_or_default();
+    let body: CheckpointBody = if raw.is_empty() {
+        CheckpointBody::default()
+    } else {
+        match serde_json::from_slice(&raw) {
+            Ok(b) => b,
+            Err(e) => return error(StatusCode::BAD_REQUEST, "BAD_JSON", e.to_string()),
+        }
+    };
     let comment = body
         .comment
         .unwrap_or_else(|| "known good (mandate warden)".into());
@@ -378,15 +477,31 @@ struct RestoreBody {
     checkpoint: Option<String>,
 }
 
-async fn restore_agent(
-    State(app): State<Shared>,
-    headers: HeaderMap,
-    body: Option<Json<RestoreBody>>,
-) -> Response {
-    if let Err(r) = require_admin(&app, &headers) {
+async fn restore_agent(State(app): State<Shared>, request: Request) -> Response {
+    let (parts, raw) = match read_admin_body(request).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if let Err(r) = require_admin(
+        &app,
+        &parts.headers,
+        parts.method.as_str(),
+        &path_and_query(&parts),
+        &raw,
+    )
+    .await
+    {
         return r;
     }
-    let requested = body.and_then(|b| b.0.checkpoint);
+    let body: RestoreBody = if raw.is_empty() {
+        RestoreBody::default()
+    } else {
+        match serde_json::from_slice(&raw) {
+            Ok(b) => b,
+            Err(e) => return error(StatusCode::BAD_REQUEST, "BAD_JSON", e.to_string()),
+        }
+    };
+    let requested = body.checkpoint;
     let target = match requested {
         Some(c) => Some(c),
         None => app.state.lock().await.good_checkpoint.clone(),
