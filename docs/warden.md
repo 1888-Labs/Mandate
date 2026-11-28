@@ -29,7 +29,24 @@ Every decision is written to a log that the dashboard and `GET /v1/state` read.
 | `ANY /v1/gateway/github/{path}` | agent signature | A GitHub REST call, e.g. `/v1/gateway/github/repos/OWNER/REPO/issues` |
 | `ANY /v1/gateway/ollama/{path}` | agent signature | An Ollama API call, e.g. `/v1/gateway/ollama/api/chat` |
 
-Admin routes need `Authorization: Bearer $WARDEN_ADMIN_TOKEN`. Without `WARDEN_ADMIN_TOKEN` set, they're disabled (`403 ADMIN_DISABLED`).
+Admin routes accept an owner signature, and still accept `Authorization: Bearer $WARDEN_ADMIN_TOKEN` so the dashboard keeps working. The bearer token is a shared secret: prefer the signature. A request that sends either admin header is checked as a signature and is not silently accepted with the token instead.
+
+### Signing an admin request
+
+| Header | Value |
+|---|---|
+| `x-mandate-admin-timestamp` | Unix seconds |
+| `x-mandate-admin-signature` | `0x` + 65-byte EIP-191 signature over the digest below |
+
+```text
+digest = keccak256(
+  "mandate-admin/1\n" + METHOD + "\n" + path_and_query + "\n" + timestamp + "\n" + "0x" + hex(keccak256(body))
+)
+```
+
+`path_and_query` is the Warden path, for example `/v1/admin/mandates`. The recovered signer must be the Warden's owner address (`GET /v1/state` field `owner`). The same 60 s window and one-time signature rules as agent calls apply. Auth errors return `401` with `MISSING_ADMIN_AUTH`, `BAD_TIMESTAMP`, `STALE_REQUEST`, `BAD_SIGNATURE`, `NOT_OWNER` or `REPLAYED_REQUEST`.
+
+The owner key lives in `WARDEN_DATA/owner.key` (`0x` + 32-byte hex). Sign with that key. The Warden still uses it to sign the mandate or revocation it records.
 
 ## Signing a request
 
@@ -127,7 +144,7 @@ Other errors: `502 UPSTREAM_ERROR` (the connector call failed), `503 NO_CONNECTO
 |---|---|---|
 | `PORT` | `8080` | Listen port |
 | `WARDEN_DATA` | `warden-data` | Directory for `owner.key`, `store.json` and `decisions.jsonl`. The owner key is created on first run |
-| `WARDEN_ADMIN_TOKEN` | unset | Enables the admin routes |
+| `WARDEN_ADMIN_TOKEN` | unset | Legacy shared secret for the admin routes. Owner signatures work without it |
 | `GITHUB_CONNECTION_ID` | unset | Sprites GitHub connection to forward through |
 | `OLLAMA_CONNECTION_ID` | unset | Sprites Ollama connection to forward through |
 | `GITHUB_TOKEN` | unset | Outside Sprites: a GitHub token the Warden calls the API with directly. Ignored when `GITHUB_CONNECTION_ID` is set |

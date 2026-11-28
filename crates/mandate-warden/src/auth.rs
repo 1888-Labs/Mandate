@@ -108,6 +108,87 @@ pub fn verify(
     Ok(signer)
 }
 
+/// Digest an owner signs for one admin request.
+///
+/// `keccak256("mandate-admin/1\n" METHOD "\n" path_and_query "\n" timestamp "\n" 0x<keccak256(body)>)`
+///
+/// Distinct from [`request_digest`] so an agent signature cannot be replayed
+/// as an admin request, or the other way around.
+pub fn admin_request_digest(
+    method: &str,
+    path_and_query: &str,
+    timestamp: u64,
+    body: &[u8],
+) -> [u8; 32] {
+    let body_hash = hex::encode(Keccak256::digest(body));
+    let text = format!(
+        "mandate-admin/1\n{}\n{}\n{}\n0x{}",
+        method.to_ascii_uppercase(),
+        path_and_query,
+        timestamp,
+        body_hash
+    );
+    Keccak256::digest(text.as_bytes()).into()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AdminAuthError {
+    Missing(&'static str),
+    BadTimestamp,
+    Stale,
+    BadSignature,
+    NotOwner,
+    Replay,
+}
+
+impl AdminAuthError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Missing(_) => "MISSING_ADMIN_AUTH",
+            Self::BadTimestamp => "BAD_TIMESTAMP",
+            Self::Stale => "STALE_REQUEST",
+            Self::BadSignature => "BAD_SIGNATURE",
+            Self::NotOwner => "NOT_OWNER",
+            Self::Replay => "REPLAYED_REQUEST",
+        }
+    }
+}
+
+/// Verify that this request was signed by `owner`.
+///
+/// The recovered signer is the owner address. A claimed address is not trusted.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_admin(
+    owner: &PrincipalId,
+    timestamp: Option<&str>,
+    signature: Option<&str>,
+    method: &str,
+    path_and_query: &str,
+    body: &[u8],
+    now: u64,
+    replay: &mut ReplayGuard,
+) -> Result<(), AdminAuthError> {
+    let timestamp: u64 = timestamp
+        .ok_or(AdminAuthError::Missing("x-mandate-admin-timestamp"))?
+        .parse()
+        .map_err(|_| AdminAuthError::BadTimestamp)?;
+    if now.abs_diff(timestamp) > MAX_SKEW_SECS {
+        return Err(AdminAuthError::Stale);
+    }
+    let sig_hex = signature.ok_or(AdminAuthError::Missing("x-mandate-admin-signature"))?;
+    let sig =
+        hex::decode(sig_hex.trim_start_matches("0x")).map_err(|_| AdminAuthError::BadSignature)?;
+    let digest = admin_request_digest(method, path_and_query, timestamp, body);
+    let signer = recover_signer(&digest, &sig).map_err(|_| AdminAuthError::BadSignature)?;
+    if &signer != owner {
+        return Err(AdminAuthError::NotOwner);
+    }
+    if !replay.check_and_remember(now, &sig) {
+        return Err(AdminAuthError::Replay);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +255,94 @@ mod tests {
             &mut guard,
         );
         assert_eq!(stale, Err(AuthError::Stale));
+    }
+
+    fn admin_signed(method: &str, path: &str, ts: u64, body: &[u8]) -> (PrincipalId, String) {
+        let key = generate_signing_key();
+        let sig = sign_message(&admin_request_digest(method, path, ts, body), &key).unwrap();
+        (address_of(&key), format!("0x{}", hex::encode(sig)))
+    }
+
+    #[test]
+    fn owner_signature_is_accepted_once() {
+        let (owner, sig) = admin_signed("POST", "/v1/admin/mandates", 1000, b"{}");
+        let mut guard = ReplayGuard::default();
+        verify_admin(
+            &owner,
+            Some("1000"),
+            Some(&sig),
+            "POST",
+            "/v1/admin/mandates",
+            b"{}",
+            1005,
+            &mut guard,
+        )
+        .unwrap();
+        let again = verify_admin(
+            &owner,
+            Some("1000"),
+            Some(&sig),
+            "POST",
+            "/v1/admin/mandates",
+            b"{}",
+            1006,
+            &mut guard,
+        );
+        assert_eq!(again, Err(AdminAuthError::Replay));
+    }
+
+    #[test]
+    fn admin_rejects_wrong_key_tampered_body_and_stale_time() {
+        let (owner, sig) = admin_signed("POST", "/v1/admin/revoke", 1000, b"{}");
+        let (other, _) = admin_signed("POST", "/v1/admin/revoke", 1000, b"{}");
+        let mut guard = ReplayGuard::default();
+        assert_eq!(
+            verify_admin(
+                &other,
+                Some("1000"),
+                Some(&sig),
+                "POST",
+                "/v1/admin/revoke",
+                b"{}",
+                1000,
+                &mut guard,
+            ),
+            Err(AdminAuthError::NotOwner)
+        );
+        assert_eq!(
+            verify_admin(
+                &owner,
+                Some("1000"),
+                Some(&sig),
+                "POST",
+                "/v1/admin/revoke",
+                b"{\"a\":1}",
+                1000,
+                &mut guard,
+            ),
+            Err(AdminAuthError::NotOwner)
+        );
+        assert_eq!(
+            verify_admin(
+                &owner,
+                Some("1000"),
+                Some(&sig),
+                "POST",
+                "/v1/admin/revoke",
+                b"{}",
+                1000 + 600,
+                &mut guard,
+            ),
+            Err(AdminAuthError::Stale)
+        );
+    }
+
+    #[test]
+    fn agent_digest_is_not_an_admin_digest() {
+        let body = b"{}";
+        assert_ne!(
+            request_digest("POST", "/v1/admin/mandates", 1, body),
+            admin_request_digest("POST", "/v1/admin/mandates", 1, body)
+        );
     }
 }
