@@ -102,6 +102,10 @@ Read them at **[1888-labs.github.io/Mandate](https://1888-labs.github.io/Mandate
 - [CLI](docs/cli.md) and [library](docs/library.md)
 - [Development](docs/development.md), [roadmap](docs/roadmap.md) and [inspiration](docs/inspiration.md)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test and local-run instructions. Security reports go through [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT
