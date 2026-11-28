@@ -1,6 +1,6 @@
 //! What the authorization engine needs from storage and from cryptography.
 //!
-//! The engine depends only on these traits, never on Arkiv or on a
+//! The engine depends only on these traits, never on a storage backend or a
 //! specific signature scheme. Storage is untrusted: everything it returns
 //! is re-verified.
 
