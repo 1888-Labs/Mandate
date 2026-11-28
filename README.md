@@ -29,6 +29,24 @@ A personal coding agent runs on its own Sprite. It has no GitHub token, no model
   </picture>
 </p>
 
+## Live
+
+- **Warden dashboard:** [mandate-warden-b4lwr.sprites.app](https://mandate-warden-b4lwr.sprites.app) shows every decision the Warden makes, the mandates in force and the agent's checkpoints. Granting, revoking and restoring need the admin token.
+- **Docs:** [1888-labs.github.io/Mandate](https://1888-labs.github.io/Mandate/)
+- **Where the agent works:** [dicethedev/mandate-demo](https://github.com/dicethedev/mandate-demo)
+
+## How the leash is enforced
+
+Each layer is enforced by Sprites or by signatures, not by asking the model to behave:
+
+| Layer | What stops the agent |
+|---|---|
+| Network | The agent Sprite's network policy allows only the Warden's URL. GitHub, model APIs and package registries are unreachable |
+| Credentials | The GitHub and Ollama connectors are locked to the Warden Sprite. Called from the agent, they return `403` |
+| Identity | Every call is signed with the agent's key (EIP-191). Unsigned or replayed calls are rejected |
+| Authority | Each call is checked against signed mandates that lead back to the owner key: action, repository, branch, model, expiry, revocation |
+| Recovery | The Warden checkpoints the agent Sprite before allowed writes and can restore it to a known-good checkpoint |
+
 ## What it looks like
 
 A real run on the agent Sprite. The owner has granted the agent `model.chat` on `gpt-oss:120b`, read access to the repository, and `contents.write` only on the `agent/work` branch. Asked to edit `main` directly:
@@ -69,6 +87,8 @@ The image is `ghcr.io/1888-labs/mandate`. See [self-hosting](docs/self-hosting.m
 | [`mandate-crypto`](crates/mandate-crypto) | EIP-191 signing and verification |
 | [`mandate-warden`](crates/mandate-warden) | The Warden gateway in front of the Sprites connectors, plus two agent-side binaries: `warden-call` (one signed call) and `mandate-agent` (the agent) |
 | [`mandate-cli`](crates/mandate-cli) | Issue, delegate and check mandates from the terminal |
+
+The engine is a plain Rust library with no I/O. Use it to put the same checks in your own gateway: see [using Mandate as a library](docs/library.md).
 
 ## Docs
 
