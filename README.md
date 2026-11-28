@@ -31,7 +31,7 @@ A personal coding agent runs on its own Sprite. It has no GitHub token, no model
 
 ## Live
 
-- **Warden dashboard:** [mandate-warden-b4lwr.sprites.app](https://mandate-warden-b4lwr.sprites.app) shows every decision the Warden makes, the mandates in force and the agent's checkpoints. Granting, revoking and restoring need the admin token.
+- **Warden dashboard:** [mandate-warden-b4lwr.sprites.app](https://mandate-warden-b4lwr.sprites.app) shows the path every call takes with the agent's live network policy, every decision the Warden makes and the mandates in force. Its **Try to break it** panel lets anyone send an unsigned, forged or replayed call and watch the Warden refuse it.
 - **Docs:** [1888-labs.github.io/Mandate](https://1888-labs.github.io/Mandate/)
 - **Where the agent works:** [dicethedev/mandate-demo](https://github.com/dicethedev/mandate-demo)
 
