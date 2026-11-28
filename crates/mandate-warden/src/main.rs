@@ -102,6 +102,8 @@ struct App {
     state: Mutex<WardenState>,
     replay: Mutex<ReplayGuard>,
     sprites: Sprites,
+    /// Last network-policy read, so a busy dashboard doesn't hammer the API.
+    proof_cache: Mutex<Option<(std::time::Instant, Value)>>,
 }
 
 type Shared = Arc<App>;
@@ -168,12 +170,14 @@ async fn main() {
         config,
         state: Mutex::new(state),
         replay: Mutex::new(ReplayGuard::default()),
+        proof_cache: Mutex::new(None),
         sprites,
     });
     let router = Router::new()
         .route("/", get(home))
         .route("/health", get(|| async { "ok" }))
         .route("/v1/state", get(snapshot))
+        .route("/v1/proof", get(proof))
         .route("/v1/mandates", post(submit_mandate))
         .route("/v1/admin/mandates", post(grant))
         .route("/v1/admin/revoke", post(revoke))
@@ -199,6 +203,48 @@ async fn home() -> Html<&'static str> {
 
 async fn snapshot(State(app): State<Shared>) -> Json<Value> {
     Json(app.state.lock().await.snapshot())
+}
+
+/// What the agent can reach and where credentials live, read live from
+/// Fly.io where possible, so the dashboard can show it rather than claim it.
+async fn proof(State(app): State<Shared>) -> Json<Value> {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(60);
+    if let Some((at, cached)) = app.proof_cache.lock().await.as_ref() {
+        if at.elapsed() < TTL {
+            return Json(cached.clone());
+        }
+    }
+    let sprite = app.config.agent_sprite.clone();
+    let network = if app.sprites.can_manage() {
+        match app.sprites.network_policy(&sprite).await {
+            Ok(v) => {
+                json!({ "source": "sprites-api", "rules": v.get("rules").cloned().unwrap_or(Value::Null) })
+            }
+            Err(e) => json!({ "source": "sprites-api", "error": e }),
+        }
+    } else {
+        json!({ "source": "none" })
+    };
+    let via = |connector: bool, direct: bool| {
+        if connector {
+            "connector"
+        } else if direct {
+            "warden"
+        } else {
+            "none"
+        }
+    };
+    let out = json!({
+        "agentSprite": sprite,
+        "network": network,
+        "github": via(app.config.github_connection.is_some(), app.config.github_direct.is_some()),
+        "ollama": via(app.config.ollama_connection.is_some(), app.config.ollama_direct.is_some()),
+        "checkpointOnWrite": app.config.checkpoint_on_write,
+        "restoreOnDeny": app.config.restore_on_deny,
+        "checkedAt": now(),
+    });
+    *app.proof_cache.lock().await = Some((std::time::Instant::now(), out.clone()));
+    Json(out)
 }
 
 fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {

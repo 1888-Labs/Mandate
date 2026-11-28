@@ -17,9 +17,10 @@ Every decision is written to a log that the dashboard and `GET /v1/state` read.
 
 | Route | Auth | What it does |
 |---|---|---|
-| `GET /` | none | Small status page with the owner address |
+| `GET /` | none | The live dashboard: the path every call takes, decisions, mandates, owner controls, and a "Try to break it" panel that sends unsigned, forged and stale calls |
 | `GET /health` | none | `ok` |
 | `GET /v1/state` | none | Owner, labels, mandates, revocations, the last 200 decisions and the known-good checkpoint |
+| `GET /v1/proof` | none | What the agent can reach, read live from the Sprites API (cached 60 s), and whether GitHub and Ollama go through connectors or Warden-held tokens. No secrets |
 | `POST /v1/mandates` | none | Submit a mandate someone else signed, such as an agent delegating to a sub-agent. Only the signature is checked here; the chain is checked when the mandate is used. Body: `{ "mandate": {...}, "label": "..." }` |
 | `POST /v1/admin/mandates` | admin | The owner signs a root mandate (see [Granting mandates](#granting-mandates)) |
 | `POST /v1/admin/revoke` | admin | The owner revokes one of its mandates. Body: `{ "mandateId": "0x...", "reason": "..." }` |

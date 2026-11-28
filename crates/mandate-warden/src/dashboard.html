@@ -135,7 +135,63 @@
   footer { margin-top: 28px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font: 500 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
   footer a { color: var(--violet); text-decoration: none; }
 
+
+  /* The path every call takes */
+  .path { padding: 18px 20px 16px; margin-bottom: 16px; }
+  .path-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .path-head .replay { background: none; border: 0; padding: 0; cursor: pointer; font: 600 12px var(--sans); color: var(--violet); }
+  .lanes { display: grid; grid-template-columns: minmax(0,1.25fr) 72px minmax(0,1fr) minmax(0,1.5fr); align-items: center; }
+  .pnode { border: 1.5px solid var(--line); background: var(--panel-2); border-radius: 14px; padding: 12px 14px; position: relative; transition: border-color .25s, background .25s, box-shadow .25s; min-width: 0; }
+  .pnode .pt { font: 700 14px var(--sans); color: var(--deep); display: flex; align-items: center; gap: 8px; }
+  .pnode .ps { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pnode.warden { background: var(--deep); border-color: var(--deep); }
+  .pnode.warden .pt { color: #fff; }
+  .pnode.warden .ps { color: #C9BEF5; }
+  .pnode.hit-allow { border-color: var(--allow); box-shadow: 0 0 0 4px var(--allow-soft); }
+  .pnode.hit-deny { border-color: var(--deny); box-shadow: 0 0 0 5px var(--deny-soft); animation: shake .35s; }
+  .pnode.warden.hit-allow { box-shadow: 0 0 0 5px rgba(31,157,85,.25); }
+  @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .pv { margin-top: 8px; min-height: 22px; font: 700 12px var(--mono); letter-spacing: .04em; }
+  .pv span { display: inline-block; padding: 3px 8px; border-radius: 6px; }
+  .pv .allow { background: var(--allow); color: #fff; }
+  .pv .deny { background: var(--deny); color: #fff; }
+  .holds { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+  .net { margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); display: grid; gap: 5px; }
+  .net .rules { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip.ok { background: var(--allow-soft); color: var(--allow); }
+  .live-src { font: 500 10.5px var(--mono); color: var(--muted); letter-spacing: .04em; }
+  .live-src::before { content: "● "; color: var(--allow); }
+  .live-src.stale::before { color: var(--muted); }
+  .seg { position: relative; height: 2px; background: repeating-linear-gradient(90deg, #C9BCF2 0 7px, transparent 7px 12px); }
+  .seg .pk { position: absolute; top: 50%; left: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--violet); opacity: 0; box-shadow: 0 0 0 4px var(--violet-soft); }
+  .seg.run .pk { animation: travel .55s ease-in forwards; }
+  .seg.run.allow .pk { background: var(--allow); box-shadow: 0 0 0 4px var(--allow-soft); }
+  @keyframes travel { 0% { left: 0; opacity: 1; } 100% { left: 100%; opacity: 1; } }
+  .forks { display: grid; gap: 12px; }
+  .fork { display: grid; grid-template-columns: 56px minmax(0,1fr); align-items: center; }
+  .pnode.conn .pt::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pnode.conn.on .pt::before { background: var(--allow); }
+
+  /* Try to break it */
+  .attacks { padding: 14px 16px 16px; display: grid; gap: 10px; }
+  .attacks p { margin: 0; font-size: 13px; color: var(--muted); }
+  .attack { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 10px; align-items: center; background: var(--panel-2); }
+  .attack .t { font: 600 13.5px var(--sans); }
+  .attack .d { font-size: 12px; color: var(--muted); grid-column: 1; }
+  .attack button { grid-row: 1 / span 2; grid-column: 2; }
+  .attack .res { grid-column: 1 / -1; display: none; margin-top: 6px; font-size: 12.5px; padding: 7px 10px; border-radius: 8px; background: var(--allow-soft); color: #165C35; }
+  .attack .res.show { display: block; animation: flash 1.2s ease-out; }
+  .attack .res.bad { background: var(--deny-soft); color: var(--deny); }
+  .attack .res code { color: inherit; font-weight: 700; }
+
   @media (max-width: 960px) {
+    .lanes { grid-template-columns: 1fr; }
+    .lanes > .seg, .fork > .seg { width: 2px; height: 28px; margin: 0 auto; background: repeating-linear-gradient(180deg, #C9BCF2 0 7px, transparent 7px 12px); }
+    .fork { grid-template-columns: 1fr; }
+    .seg .pk { left: 50%; top: 0; margin: -6px 0 0 -6px; }
+    .seg.run .pk { animation-name: travelv; }
+    @keyframes travelv { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 1; } }
+    .forks { grid-template-columns: 1fr 1fr; gap: 10px; }
     .top, .grid { grid-template-columns: 1fr; }
     .row { grid-template-columns: 60px 1fr; }
     .kind { display: none; }
@@ -157,6 +213,37 @@
 
   <p class="tagline">Every call the agent makes, to its model or to GitHub, is signed with its key and checked here against a mandate its owner signed. <b>The prompt is not the security boundary. Mandate is.</b></p>
 
+
+  <section class="card path" aria-labelledby="path-title">
+    <div class="path-head">
+      <span class="eyebrow" id="path-title">The only way out · every call takes this path</span>
+      <button class="replay" type="button" id="replay">▶ Replay the last call</button>
+    </div>
+    <div class="lanes">
+      <div class="pnode" id="n-agent">
+        <div class="pt">Agent Sprite</div>
+        <div class="ps"><code id="p-agent">mandate-agent</code> · runs the coding agent</div>
+        <div class="holds"><span class="chip">its signing key</span><span class="chip no">no GitHub token</span><span class="chip no">no model key</span></div>
+        <div class="net">
+          <div class="rules" id="p-rules"><span class="chip">loading network policy…</span></div>
+          <span class="live-src stale" id="p-src">network policy</span>
+        </div>
+      </div>
+      <div class="seg" id="s-in" aria-hidden="true"><span class="pk"></span></div>
+      <div class="pnode warden" id="n-warden">
+        <div class="pt">Mandate Warden</div>
+        <div class="ps">verify signature · classify · check mandate · log</div>
+        <div class="pv" id="p-verdict" aria-live="polite"></div>
+      </div>
+      <div class="forks">
+        <div class="fork"><div class="seg" id="s-gh" aria-hidden="true"><span class="pk"></span></div>
+          <div class="pnode conn" id="n-gh"><div class="pt">GitHub</div><div class="ps" id="p-gh">checking…</div></div></div>
+        <div class="fork"><div class="seg" id="s-ol" aria-hidden="true"><span class="pk"></span></div>
+          <div class="pnode conn" id="n-ol"><div class="pt">Ollama</div><div class="ps" id="p-ol">checking…</div></div></div>
+      </div>
+    </div>
+  </section>
+
   <div class="top">
     <div class="card hero" id="hero">
       <div class="eyebrow">Latest decision</div>
@@ -175,10 +262,6 @@
         <div class="fact deny"><div class="eyebrow">Denied</div><div class="n" id="s-deny">–</div></div>
         <div class="fact"><div class="eyebrow">Active mandates</div><div class="n" id="s-mandates">–</div></div>
         <div class="fact"><div class="eyebrow">Known-good</div><div class="n" id="s-cp">–</div></div>
-      </div>
-      <div>
-        <div class="eyebrow" style="margin-bottom:6px">Holds</div>
-        <div class="reach"><span class="chip">its signing key</span><span class="chip no">no GitHub token</span><span class="chip no">no model key</span></div>
       </div>
       <div class="meta" id="agent-last">No calls yet.</div>
     </div>
@@ -199,6 +282,19 @@
     </section>
 
     <div class="side">
+      <section class="card">
+        <h2><span class="eyebrow">Try to break it</span></h2>
+        <div class="attacks">
+          <p>These send real requests from your browser to this Warden, trying to open an issue on the agent's repository. Each should be refused before anything reaches GitHub.</p>
+          <div class="attack"><span class="t">Skip the signature</span><span class="d">Call GitHub through the Warden with no agent key.</span>
+            <button class="btn" type="button" data-attack="unsigned">Try it</button><div class="res" aria-live="polite"></div></div>
+          <div class="attack"><span class="t">Pose as the agent</span><span class="d">Claim the agent's address with a forged signature.</span>
+            <button class="btn" type="button" data-attack="forged">Try it</button><div class="res" aria-live="polite"></div></div>
+          <div class="attack"><span class="t">Replay an old call</span><span class="d">Resend a request captured ten minutes ago.</span>
+            <button class="btn" type="button" data-attack="stale">Try it</button><div class="res" aria-live="polite"></div></div>
+        </div>
+      </section>
+
       <section class="card">
         <h2><span class="eyebrow">Mandates</span><span class="eyebrow" id="owner"></span></h2>
         <div id="mandates"><div class="empty">No mandates.</div></div>
@@ -322,7 +418,7 @@ function renderHero(state) {
   const key = keyOf(d);
   const target = d.recipient ? ` → <code>${esc(d.recipient)}</code>` : "";
   const path = isModel(d) ? d.path : d.path.replace(/^github\//, "");
-  const chain = d.delegationPath.length
+  const chain = d.mandateId && d.delegationPath.length
     ? `<div class="chain">${chainHtml(d.delegationPath)}<span>via mandate <code>${esc(short(d.mandateId))}</code></span></div>`
     : `<div class="chain"><span class="node">Agent <b>${esc(short(d.agent))}</b></span><span>no mandate covers this call</span></div>`;
   $("hero").className = "card hero " + d.decision + (key !== heroKey && heroKey ? " bump" : "");
@@ -331,6 +427,7 @@ function renderHero(state) {
       <span class="call"><span class="m">${esc(d.method)}</span> ${esc(path)}</span></div>
     <div class="meta"><code>${esc(d.action)}</code> on <code>${esc(d.resource)}</code>${target} · ${ago(d.at)}${d.upstreamStatus ? " · HTTP " + d.upstreamStatus : ""}</div>
     ${whyHtml(d)}${d.note ? `<div class="note">${esc(d.note)}</div>` : ""}${chain}`;
+  if (heroKey && key !== heroKey) animateCall(d);
   heroKey = key;
 
   const recent = state.decisions.slice(0, 60).reverse();
@@ -504,8 +601,116 @@ const prefill = setInterval(() => {
   clearInterval(prefill);
 }, 500);
 
-poll();
+
+// ---------- The path every call takes ----------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let animating = false;
+async function animateCall(d) {
+  if (!d || animating) return;
+  animating = true;
+  const nodes = ["n-agent", "n-warden", "n-gh", "n-ol"].map($);
+  const segs = ["s-in", "s-gh", "s-ol"].map($);
+  nodes.forEach((n) => n.classList.remove("hit-allow", "hit-deny"));
+  segs.forEach((s) => s.classList.remove("run", "allow"));
+  $("p-verdict").innerHTML = "";
+  void document.body.offsetWidth;
+  $("n-agent").classList.add("hit-allow");
+  $("s-in").classList.add("run");
+  await sleep(560);
+  const allow = d.decision === "allow";
+  $("n-warden").classList.add(allow ? "hit-allow" : "hit-deny");
+  $("p-verdict").innerHTML = allow
+    ? `<span class="allow">ALLOW · ${esc(d.action)}</span>`
+    : `<span class="deny">DENY · ${esc(d.reason)}</span>`;
+  if (allow) {
+    await sleep(260);
+    const model = isModel(d);
+    const seg = $(model ? "s-ol" : "s-gh");
+    seg.classList.add("run", "allow");
+    await sleep(560);
+    $(model ? "n-ol" : "n-gh").classList.add("hit-allow");
+  }
+  await sleep(2200);
+  nodes.forEach((n) => n.classList.remove("hit-allow", "hit-deny"));
+  segs.forEach((s) => s.classList.remove("run", "allow"));
+  animating = false;
+}
+$("replay").addEventListener("click", () => last && animateCall(last.decisions[0]));
+
+function hostOf(rule) { return rule.domain === "*" ? "everything else" : rule.domain; }
+async function loadProof() {
+  try {
+    const p = await fetch("v1/proof", { cache: "no-store" }).then((r) => r.json());
+    $("p-agent").textContent = p.agentSprite || "agent";
+    const label = { connector: "Sprites connector, locked to the Warden", warden: "token held by the Warden", none: "not configured" };
+    $("p-gh").textContent = label[p.github] || "–";
+    $("p-ol").textContent = label[p.ollama] || "–";
+    $("n-gh").classList.toggle("on", p.github !== "none");
+    $("n-ol").classList.toggle("on", p.ollama !== "none");
+    const rules = p.network && p.network.rules;
+    if (Array.isArray(rules) && rules.length) {
+      $("p-rules").innerHTML = rules.map((r) =>
+        `<span class="chip ${r.action === "allow" ? "ok" : "no"}">${r.action === "allow" ? "✓" : "✗"} ${esc(hostOf(r))}</span>`).join("");
+      $("p-src").textContent = "network policy · read live from the Sprites API";
+      $("p-src").classList.remove("stale");
+    } else {
+      $("p-rules").innerHTML = '<span class="chip">no Sprites network policy (running outside Sprites)</span>';
+      $("p-src").textContent = "network policy";
+    }
+  } catch {}
+}
+
+// ---------- Try to break it ----------
+const EXPLAIN = {
+  MISSING_AUTH: "No signature, no entry. The Warden never forwarded it.",
+  BAD_SIGNATURE: "The signature doesn't verify. Without the agent's private key, a call can't be forged.",
+  SIGNER_MISMATCH: "The signature doesn't belong to the agent it claims to be. Without the agent's key, a call can't be forged.",
+  STALE_REQUEST: "Too old. Calls are only valid for 60 seconds, and each signature works once.",
+  REPLAYED_REQUEST: "Already seen. Each signature works once.",
+};
+function repoFromState() {
+  const gh = last && last.mandates.find((m) => m.resource.kind === "github");
+  return gh ? gh.resource.id : "octocat/hello-world";
+}
+function randomSig() {
+  const b = new Uint8Array(65);
+  crypto.getRandomValues(b);
+  b[64] = 27;
+  return "0x" + [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+document.querySelectorAll("[data-attack]").forEach((btn) => btn.addEventListener("click", async () => {
+  const kind = btn.dataset.attack;
+  const res = btn.parentElement.querySelector(".res");
+  const agent = (last && last.decisions[0] && last.decisions[0].agent) || "0x0000000000000000000000000000000000000001";
+  const now = Math.floor(Date.now() / 1000);
+  const headers = { "content-type": "application/json" };
+  if (kind !== "unsigned") {
+    headers["x-mandate-agent"] = agent;
+    headers["x-mandate-timestamp"] = String(kind === "stale" ? now - 600 : now);
+    headers["x-mandate-signature"] = randomSig();
+  }
+  btn.disabled = true;
+  try {
+    const r = await fetch(`v1/gateway/github/repos/${repoFromState()}/issues`, {
+      method: "POST", headers, body: JSON.stringify({ title: "Opened by a stranger" }),
+    });
+    const out = await r.json().catch(() => ({}));
+    const refused = r.status === 401 || r.status === 403;
+    res.className = "res show" + (refused ? "" : " bad");
+    res.innerHTML = refused
+      ? `Refused · HTTP ${r.status} <code>${esc(out.error || out.reason || "")}</code> · ${esc(EXPLAIN[out.error] || out.message || "")}`
+      : `Unexpected: HTTP ${r.status}`;
+  } catch (e) {
+    res.className = "res show bad";
+    res.textContent = "Could not reach the Warden: " + e.message;
+  }
+  btn.disabled = false;
+}));
+
+poll().then(() => { if (last && last.decisions[0]) setTimeout(() => animateCall(last.decisions[0]), 400); });
 setInterval(poll, 2000);
+loadProof();
+setInterval(loadProof, 60000);
 </script>
 </body>
 </html>

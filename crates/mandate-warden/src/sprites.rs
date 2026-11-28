@@ -131,6 +131,13 @@ impl Sprites {
         serde_json::from_str(&text).map_err(|e| e.to_string())
     }
 
+    /// A Sprite's network policy: the domains it may and may not reach.
+    pub async fn network_policy(&self, sprite: &str) -> Result<serde_json::Value, String> {
+        let url = format!("{}/v1/sprites/{sprite}/policy/network", self.api_base);
+        let text = self.manage(Method::GET, &url, None).await?;
+        serde_json::from_str(&text).map_err(|e| e.to_string())
+    }
+
     /// Roll a Sprite's disk back to `checkpoint`. Destructive: it restarts
     /// the Sprite and ends its sessions.
     pub async fn restore(&self, sprite: &str, checkpoint: &str) -> Result<String, String> {
